@@ -7,12 +7,13 @@ author: Idan Pogrebinsky
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import socket
 import threading
+from sqlite3 import *
 
 
 class TelegramController:
     """
     the telegram controller takes care of the telegram bot.
-    recieves commands from the telegram chat and can communicate with the bus controller
+    receives commands from the telegram chat and can communicate with the bus controller
     """
 
     def __init__(self, token, bus_controller):
@@ -27,6 +28,7 @@ class TelegramController:
         dp = updater.dispatcher
         # on different commands - answer in Telegram
         dp.add_handler(CommandHandler("help", self.help))
+        dp.add_handler(CommandHandler("history", self.history))
         dp.add_handler(CommandHandler("bus", self.bot_bus))
         updater.start_polling()
         # logging.getLogger()
@@ -35,9 +37,66 @@ class TelegramController:
 
     @staticmethod
     def help(update, context):
-        """currently a place holder function, used to test if the bot is working"""
-        """Send a message when the command /help is issued."""
+        """Send help when the command /help is issued."""
         update.message.reply_text('/bus {line} {station}')
+
+    def log(self, update, output):
+        ID = update.message.from_user.id
+        name = update.message.from_user.name
+        input_text = update.message.text
+        header = connect("banlist.db")
+        curs = header.cursor()
+        if not self.__has_history(ID):
+            curs.execute("INSERT INTO history VALUES(?, ?)", (ID, ""))
+
+        curs.execute("SELECT * FROM history WHERE ID = (?)", (ID, ))
+        data = curs.fetchall()[0][1]
+        data += f"input: {input_text}\noutput:{output}\n" + "-"*30 + "\n"
+        curs.execute("UPDATE history SET text = (?) WHERE ID = (?)", (data, ID))
+        header.commit()
+
+    @staticmethod
+    def __has_history(ID):
+        print("searching for history")
+        header = connect("banlist.db")
+        print("connected to header")
+        curs = header.cursor()
+        print("connected the cursor")
+        curs.execute("SELECT * FROM history WHERE ID = (?)", (ID,))
+        print("executed")
+        data = curs.fetchall()
+        print("fetched")
+        return len(data) >= 1
+
+    def history(self, update, context):
+        message = update.message.text.lower().split(" ")
+        ID = update.message.from_user.id
+        name = update.message.from_user.name
+        print("dealing with history")
+        if message[1] == "show":
+            print("show")
+            if not self.__has_history(ID):
+                output = "you don't have any history"
+                update.message.reply_text(output)
+                print(output)
+                self.log(update, output)
+                return
+            header = connect("banlist.db")
+            curs = header.cursor()
+            curs.execute("SELECT * FROM history WHERE ID = (?)", (ID,))
+            data = curs.fetchall()[0][1]
+            update.message.reply_text(data)
+        if message[1] == "clear":
+            if not self.has_history(ID):
+                update.message.reply_text("you already don't have history")
+                return
+            header = connect("banlist.db")
+            curs = header.cursor()
+            curs.execute("DELETE FROM history WHERE ID = (?)", (ID,))
+            header.commit()
+            output = "clean"
+            update.message.reply_text(output)
+            self.log(update, output)
 
     def bot_bus(self, update, context):
         """takes care of the user requests
@@ -51,15 +110,15 @@ class TelegramController:
             self.bus_controller.notify_bus(line, station)
         else:
             output = f"request failed line:{line} doesn't exist"
-        print(output)
+        self.log(update, output)
         update.message.reply_text(output)
 
 
 class BusController:
 
-    NEW_CONNECTION_PORT=8200
-    STATIONS_PORT=8201
-    PASSENGERS_PORT=8202
+    NEW_CONNECTION_PORT = 8200
+    STATIONS_PORT = 8201
+    PASSENGERS_PORT = 8202
     HOST = socket.gethostbyname(socket.gethostname())
 
     def __init__(self):
@@ -79,7 +138,6 @@ class BusController:
         new_bus_reciever.start()
         updates_tracker =threading.Thread(target=self.__track_updates, args=(),name="updates_tracker")
         updates_tracker.start()
-        
 
     def __track_updates(self):
         self.__bus_stations_Socket.bind((self.__ipv4, self.__bus_stations_port))
@@ -88,7 +146,7 @@ class BusController:
             # establish a connection
             client_socket, addr = self.__bus_stations_Socket.accept()
             data = client_socket.recv(1024)
-            #data  = {line_number} {station} {ID}
+            # data  = {line_number} {station} {ID}
             line_num, station, ID = data.decode().split(" ")
 
             for bus in self.__bus_dict[line_num]:
@@ -126,8 +184,8 @@ class BusController:
 
     def remove_bus(self, bus):
         self.__bus_dict[bus.get_line_num()].remove(bus)
-    def notify_bus(self, line, station):
 
+    def notify_bus(self, line, station):
         #updates the dictionary that keeps track for all the passengers
         #self.__stations_dict[line][station] = number of people waitig at the current station for that line
         print("in notify bus")
@@ -135,14 +193,11 @@ class BusController:
             if station in self.__stations_dict[line]:
                 self.__stations_dict[line][station]+=1
             else:
-                self.__stations_dict[line][station] = 0
+                self.__stations_dict[line][station] = 1
         else:
-            self.__stations_dict[line] = {station : 0}
-        print("in notify bus stage 2")
+            self.__stations_dict[line] = {station : 1}
         for bus in self.__bus_dict[line]:
-            print("in notify bus stage 3")
             bus.update_passengers(station, self.__stations_dict[line][station])
-        print("out of notify bus")
 
     class Bus:
         def __init__(self, address, line_number, station, ID):
