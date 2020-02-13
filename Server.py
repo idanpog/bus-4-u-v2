@@ -10,6 +10,11 @@ import threading
 from sqlite3 import *
 
 
+from tkinter import *
+from tkinter.ttk import Treeview
+from time import sleep
+import random
+
 class TelegramController:
     """
     the telegram controller takes care of the telegram bot.
@@ -133,6 +138,9 @@ class BusController:
         self.__bus_dict = {}
         self.__stations_dict = {}
 
+    def get_bus_dict(self):
+        return self.__bus_dict
+
     def start(self):
         new_bus_reciever =threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
         new_bus_reciever.start()
@@ -149,7 +157,7 @@ class BusController:
             # data  = {line_number} {station} {ID}
             line_num, station, ID = data.decode().split(" ")
 
-            for bus in self.__bus_dict[line_num]:
+            for bus in self.__bus_dict[int(line_num)]:
                 if bus.get_ID() == ID:
                     bus.set_station(station)
                     print(f"{bus} has updated his station")
@@ -202,8 +210,8 @@ class BusController:
     class Bus:
         def __init__(self, address, line_number, station, ID):
             self.__address = address
-            self.__station = station
-            self.__line_number = line_number
+            self.__station = int(station)
+            self.__line_number = int(line_number)
             self.__ID = ID
 
         def get_addr(self):
@@ -232,9 +240,58 @@ class BusController:
         def __str__(self):
             return f"line number: [{self.__line_number}], Current station [{self.__station}] \naddress: {self.__address}"
 
-    class Display:
-        pass
 
+def translateTOList(bus_Dict):
+    data = []
+    if len(bus_Dict) == 0:
+        return [[]]
+    for i in range(max(bus_Dict.keys())):
+        data.append([f"{i+1}"])
+    for lineNum, buses in bus_Dict.items():
+        list = [f"{lineNum}"]
+        buses.sort()
+
+        for i in range(int(buses[-1].get_station())+1):
+            list.append(" ")
+        for bus in buses:
+            list[int(bus.get_station())] = "X"
+        data[lineNum-1] = list
+    return data
+
+
+def table(bus_controller):
+    headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8"]
+    window = Tk()
+    window.geometry("500x500")
+    window.title("buses")
+    scrollX = Scrollbar(window, orient=HORIZONTAL)
+    scrollY = Scrollbar(window, orient=VERTICAL)
+    window.resizable(OFF, OFF)
+    tree = Treeview(window, show="headings", columns=headlines, yscrollcommand=scrollY.set, xscrollcommand=scrollX.set)
+    scrollY.config(command=tree.yview)
+    scrollY.place(x=480, height=480)
+    scrollX.config(command=tree.xview)
+    scrollX.place(x=0, y=480, width=480)
+
+    for headline in headlines:
+        tree.heading(headline, text=headline)
+        tree.column(headline, anchor="center", width=35)
+
+    data = translateTOList(bus_controller.get_bus_dict())
+    for line in data:
+        tree.insert("", END, values=line)
+    tree.place(x=0, y=0, width=480, height=480)
+    update_Table(tree, window, bus_controller.get_bus_dict())
+    window.mainloop()
+
+def update_Table(tree, window, bus_dict):
+    data = translateTOList(bus_dict)
+    for i in tree.get_children():
+        tree.delete(i)
+    for line in data:
+        tree.insert("", END, values=line)
+    tree.place(x=0, y=0, width=480, height=480)
+    window.after(2000, update_Table, tree, window, bus_dict)
 
 def main():
     """start the server"""
@@ -246,6 +303,7 @@ def main():
     steve = TelegramController("990223452:AAHrln4bCzwGpkR2w-5pqesPHpuMjGKuJUI", myserver)
     threading.Thread(steve.start(), args=())
     print("ServerLoaded")
+    table(myserver)
 
 
 
