@@ -43,7 +43,7 @@ class TelegramController:
     @staticmethod
     def help(update, context):
         """Send help when the command /help is issued."""
-        update.message.reply_text('/bus {line} {station}')
+        update.message.reply_text('/bus {line} {station} \n/history show/clear')
 
     def log(self, update, output):
         ID = update.message.from_user.id
@@ -121,6 +121,7 @@ class TelegramController:
 
 class BusController:
 
+"""takes control over the buses and the communication with them"""
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
     PASSENGERS_PORT = 8202
@@ -173,7 +174,7 @@ class BusController:
             # establish a connection
             client_socket, addr = self.__new_bus_Socket.accept()
             data = client_socket.recv(1024)
-            #data  = {line_number} {station} {ID}
+            # data  = {line_number} {station} {ID}
             line_num, station, ID = data.decode().split(" ")
             bus = self.Bus(addr, line_num, station, ID)
             self.__add_bus(bus)
@@ -186,6 +187,8 @@ class BusController:
             self.__bus_dict[bus.get_line_num()].append(bus)
         else:
             self.__bus_dict[bus.get_line_num()] = [bus,]
+
+
 
     def check_line(self, line):
         return line in self.__bus_dict
@@ -206,6 +209,41 @@ class BusController:
             self.__stations_dict[line] = {station : 1}
         for bus in self.__bus_dict[line]:
             bus.update_passengers(station, self.__stations_dict[line][station])
+
+
+        """the statiscitcs"""
+    def countbuses(self):
+        count = 0
+        for key, buses in self.__bus_dict:
+            # for item in buses:
+            count += 1
+        return count
+
+    def displaybuseslocation(self):
+        bus_Dict = self.__bus_dict
+        data = []
+        if len(bus_Dict) == 0:
+            return [[]]
+        for i in range(max(bus_Dict.keys())):
+            data.append([f"{i + 1}"])
+        for lineNum, buses in bus_Dict.items():
+            list = [f"{lineNum}"]
+            buses.sort(key=lambda bus: bus.get_station())
+
+            for i in range(int(buses[-1].get_station()) + 1):
+                list.append(" ")
+            for bus in buses:
+                list[int(bus.get_station())] = "X"
+            data[lineNum - 1] = list
+        return data
+
+    def countpeople(self):
+        count = 0
+        for key, lines in self.__stations_dict:
+            for station in lines:
+                count += station
+        return count
+
 
     class Bus:
         def __init__(self, address, line_number, station, ID):
@@ -241,28 +279,10 @@ class BusController:
             return f"line number: [{self.__line_number}], Current station [{self.__station}] \naddress: {self.__address}"
 
 
-def translateTOList(bus_Dict):
-    data = []
-    if len(bus_Dict) == 0:
-        return [[]]
-    for i in range(max(bus_Dict.keys())):
-        data.append([f"{i+1}"])
-    for lineNum, buses in bus_Dict.items():
-        list = [f"{lineNum}"]
-        buses.sort()
-
-        for i in range(int(buses[-1].get_station())+1):
-            list.append(" ")
-        for bus in buses:
-            list[int(bus.get_station())] = "X"
-        data[lineNum-1] = list
-    return data
-
-
 def table(bus_controller):
     headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8"]
     window = Tk()
-    window.geometry("500x500")
+    window.geometry("700x500")
     window.title("buses")
     scrollX = Scrollbar(window, orient=HORIZONTAL)
     scrollY = Scrollbar(window, orient=VERTICAL)
@@ -277,21 +297,35 @@ def table(bus_controller):
         tree.heading(headline, text=headline)
         tree.column(headline, anchor="center", width=35)
 
-    data = translateTOList(bus_controller.get_bus_dict())
-    for line in data:
-        tree.insert("", END, values=line)
-    tree.place(x=0, y=0, width=480, height=480)
-    update_Table(tree, window, bus_controller.get_bus_dict())
+    update(tree, window, bus_controller)
     window.mainloop()
 
+
+def update(tree, window, bus_controller):
+    update_Table(tree, window, bus_controller)
+    update_labels(tree, window, bus_controller)
+    window.after(2000, update, tree, window, bus_controller)
+
+
 def update_Table(tree, window, bus_dict):
-    data = translateTOList(bus_dict)
+    data = bus_dict.displaybuseslocation()
     for i in tree.get_children():
         tree.delete(i)
     for line in data:
         tree.insert("", END, values=line)
     tree.place(x=0, y=0, width=480, height=480)
-    window.after(2000, update_Table, tree, window, bus_dict)
+
+
+def update_labels(tree, window, bus_controller):
+    print("trying to update lables")
+    active_lines_label = Label(window, text="Number of active lines: " + str(len(bus_controller.get_bus_dict())))
+    number_of_buses_label = Label(window, text="Number of buses in the system: " + str(bus_controller.countbuses()))
+    number_of_people_lable = Label(window, text="Number of people waiting: " + str(bus_controller.countpeople()))
+
+    active_lines_label.place(x=480, y=0)
+    number_of_buses_label.place(x=480, y=30)
+    number_of_people_lable.place(x=480, y=60)
+
 
 def main():
     """start the server"""
