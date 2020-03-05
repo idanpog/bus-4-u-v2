@@ -9,8 +9,8 @@ class Bus:
     STATIONS_PORT=8201
     PASSENGERS_PORT=8202
     #HOST = socket.gethostbyname(socket.gethostname())
-    HOST = "192.168.3.15"
-    ServerIP ="192.168.3.12"
+    HOST = "192.168.56.1" #this client's IP
+    ServerIP ="192.168.56.1" # the server's IP
     def __init__(self, line_number, station, ID):
         self.__station = station
         self.__line_number = line_number
@@ -55,7 +55,7 @@ class Bus:
 
 
 ID = "bus1"
-line_number = 11
+line_number = 14
 station = 1
 bus1 = Bus(line_number, station, ID)
 bus1.connect_to_server()

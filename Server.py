@@ -4,6 +4,10 @@ author: Idan Pogrebinsky
 -- server --
 """
 
+
+#TODO: add admin access
+
+
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import socket
 import threading
@@ -42,6 +46,10 @@ class TelegramController:
 
     @staticmethod
     def help(update, context):
+        message = update.message.text.lower().split(" ")
+        if message[1] == "me":
+            update.message.reply_text('if you need help buddy, call 1201 they are good guys and they will help you')
+
         """Send help when the command /help is issued."""
         update.message.reply_text('/bus {line} {station} \n/history show/clear')
 
@@ -108,8 +116,8 @@ class TelegramController:
         /bus {line} {station}
         adds the request into the system, sends a message to the bus and logs the request in the logs"""
         message = update.message.text.lower().split(" ")
-        line = message[1]
-        station = message[2]
+        line = int(message[1])
+        station = int(message[2])
         output = f"request accepted line:{line} at the {station}'s station"
         if self.bus_controller.check_line(line):
             self.bus_controller.notify_bus(line, station)
@@ -121,17 +129,17 @@ class TelegramController:
 
 class BusController:
 
-"""takes control over the buses and the communication with them"""
+    """takes control over the buses and the communication with them"""
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
     PASSENGERS_PORT = 8202
     HOST = socket.gethostbyname(socket.gethostname())
 
     def __init__(self):
-        #used to accept and listen for new buses that join the system
+        # used to accept and listen for new buses that join the system
         self.__new_bus_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.__new_bus_port = 8200
-        #used to get new updates from buses
+        # used to get new updates from buses
         self.__bus_stations_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.__bus_stations_port = 8201
 
@@ -145,7 +153,7 @@ class BusController:
     def start(self):
         new_bus_reciever =threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
         new_bus_reciever.start()
-        updates_tracker =threading.Thread(target=self.__track_updates, args=(),name="updates_tracker")
+        updates_tracker =threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
         updates_tracker.start()
 
     def __track_updates(self):
@@ -157,14 +165,18 @@ class BusController:
             data = client_socket.recv(1024)
             # data  = {line_number} {station} {ID}
             line_num, station, ID = data.decode().split(" ")
-
-            for bus in self.__bus_dict[int(line_num)]:
-                if bus.get_ID() == ID:
-                    bus.set_station(station)
-                    print(f"{bus} has updated his station")
-                    break
+            try:
+                for bus in self.__bus_dict[int(line_num)]:
+                    if bus.get_ID() == ID:
+                        if station.isnumeric():
+                            bus.set_station(station)
+                            print(f"{bus} has updated his station")
+                        else:
+                            print(f"{bus} has attempted to update his station but sent an invalid input")
+                        break
+            except:
+                print("an unregistered bus tried to access the system, ignored")
             client_socket.close()
-
 
     def __new_bus_reciever(self):
         print(f"waiting for buses at {self.__ipv4}:{BusController.NEW_CONNECTION_PORT}")
@@ -191,7 +203,7 @@ class BusController:
 
 
     def check_line(self, line):
-        return line in self.__bus_dict
+        return int(line) in self.__bus_dict
 
     def remove_bus(self, bus):
         self.__bus_dict[bus.get_line_num()].remove(bus)
@@ -202,21 +214,25 @@ class BusController:
         print("in notify bus")
         if line in self.__stations_dict:
             if station in self.__stations_dict[line]:
-                self.__stations_dict[line][station]+=1
+                self.__stations_dict[line][station] += 1
             else:
                 self.__stations_dict[line][station] = 1
         else:
-            self.__stations_dict[line] = {station : 1}
+            self.__stations_dict[line] = {station: 1}
         for bus in self.__bus_dict[line]:
-            bus.update_passengers(station, self.__stations_dict[line][station])
+            try:
+                bus.update_passengers(station, self.__stations_dict[line][station])
+            except:
+                print(f"{bus} is unavailable, kicked out of the system")
+                self.__bus_dict[line].remove(bus)
 
 
         """the statiscitcs"""
     def countbuses(self):
         count = 0
-        for key, buses in self.__bus_dict:
+        for line in self.__bus_dict.values():
             # for item in buses:
-            count += 1
+            count += len(line)
         return count
 
     def displaybuseslocation(self):
@@ -225,22 +241,31 @@ class BusController:
         if len(bus_Dict) == 0:
             return [[]]
         for i in range(max(bus_Dict.keys())):
+            #adds the bus numbers
             data.append([f"{i + 1}"])
+
+
         for lineNum, buses in bus_Dict.items():
+            # adds the buses and each line into the list
             list = [f"{lineNum}"]
             buses.sort(key=lambda bus: bus.get_station())
-
             for i in range(int(buses[-1].get_station()) + 1):
+                # adds blank spaces
                 list.append(" ")
             for bus in buses:
                 list[int(bus.get_station())] = "X"
             data[lineNum - 1] = list
+        for linenum  in self.__stations_dict.keys():
+            for station_num in self.__stations_dict[linenum].keys():
+                print(f"{len(data)}, {len(data[lineNum-1])}")
+                data[linenum-1][station_num] = self.__stations_dict[linenum][station_num]
+
         return data
 
     def countpeople(self):
         count = 0
-        for key, lines in self.__stations_dict:
-            for station in lines:
+        for line in self.__stations_dict.values():
+            for station in line.values():
                 count += station
         return count
 
@@ -258,7 +283,7 @@ class BusController:
         def get_station(self):
             return self.__station
         def set_station(self, station):
-            self.__station = station
+            self.__station = int(station)
 
         def get_line_num(self):
             return self.__line_number
@@ -275,6 +300,7 @@ class BusController:
             s.send(data.encode())
             s.close()
 
+
         def __str__(self):
             return f"line number: [{self.__line_number}], Current station [{self.__station}] \naddress: {self.__address}"
 
@@ -283,6 +309,7 @@ def table(bus_controller):
     headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8"]
     window = Tk()
     window.geometry("700x500")
+    window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
     window.title("buses")
     scrollX = Scrollbar(window, orient=HORIZONTAL)
     scrollY = Scrollbar(window, orient=VERTICAL)
@@ -317,7 +344,6 @@ def update_Table(tree, window, bus_dict):
 
 
 def update_labels(tree, window, bus_controller):
-    print("trying to update lables")
     active_lines_label = Label(window, text="Number of active lines: " + str(len(bus_controller.get_bus_dict())))
     number_of_buses_label = Label(window, text="Number of buses in the system: " + str(bus_controller.countbuses()))
     number_of_people_lable = Label(window, text="Number of people waiting: " + str(bus_controller.countpeople()))
