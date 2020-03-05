@@ -125,7 +125,8 @@ class TelegramController:
         if self.bus_controller.check_line(line):
             self.bus_controller.notify_bus(line, station)
         else:
-            output = f"request failed line:{line} doesn't exist"
+            output = f"request accepted, but there aer no buses available for that line yet"
+            self.bus_controller.notify_bus(line, station)
         self.log(update, output)
         update.message.reply_text(output)
 
@@ -222,6 +223,8 @@ class BusController:
                 self.__stations_dict[line][station] = 1
         else:
             self.__stations_dict[line] = {station: 1}
+        if line not in self.__bus_dict:
+            return
         for bus in self.__bus_dict[line]:
             try:
                 bus.update_passengers(station, self.__stations_dict[line][station])
@@ -275,7 +278,7 @@ class BusController:
 
 
         print("hey")
-        for i in range(max(bus_Dict.keys())):
+        for i in range(max_y):
             #adds the bus numbers
             data[i][0] = ([f"{i + 1}"])
 
@@ -350,7 +353,7 @@ class BusController:
 
 
 def table(bus_controller):
-    headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8"]
+    headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8","9","10","11", "12", "13", "14"]
     window = Tk()
     window.geometry("700x500")
     #window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
@@ -368,17 +371,28 @@ def table(bus_controller):
         tree.heading(headline, text=headline)
         tree.column(headline, anchor="center", width=35)
 
-    update(tree, window, bus_controller)
+    update(tree, window, bus_controller, scrollY, scrollX, headlines)
     window.mainloop()
 
 
-def update(tree, window, bus_controller):
-    update_Table(tree, window, bus_controller)
+def update(tree, window, bus_controller, scrollY, scrollX, headlines):
+    update_Table(tree, window, bus_controller, scrollY, scrollX, headlines)
     update_labels(tree, window, bus_controller)
-    window.after(2000, update, tree, window, bus_controller)
+    window.after(2000, update, tree, window, bus_controller, scrollY, scrollX, headlines)
 
 
-def update_Table(tree, window, bus_dict):
+def update_Table(tree, window, bus_dict, scrollY, scrollX, headlines):
+    tree.destroy()
+    headlines.append("15")
+    tree = Treeview(window, show="headings", columns=headlines, yscrollcommand=scrollY.set, xscrollcommand=scrollX.set)
+    scrollY.config(command=tree.yview)
+    scrollY.place(x=480, height=480)
+    scrollX.config(command=tree.xview)
+    scrollX.place(x=0, y=480, width=480)
+
+    for headline in headlines:
+        tree.heading(headline, text=headline)
+        tree.column(headline, anchor="center", width=35)
     data = bus_dict.displaybuseslocation()
     for i in tree.get_children():
         tree.delete(i)
@@ -392,9 +406,9 @@ def update_labels(tree, window, bus_controller):
     number_of_buses_label = Label(window, text="Number of buses in the system: " + str(bus_controller.countbuses()))
     number_of_people_lable = Label(window, text="Number of people waiting: " + str(bus_controller.countpeople()))
 
-    active_lines_label.place(x=480, y=0)
-    number_of_buses_label.place(x=480, y=30)
-    number_of_people_lable.place(x=480, y=60)
+    active_lines_label.place(x=500, y=0)
+    number_of_buses_label.place(x=500, y=30)
+    number_of_people_lable.place(x=500, y=60)
 
 
 def main():
