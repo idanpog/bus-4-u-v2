@@ -1,4 +1,180 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="f0c23c6a-75e0-4a24-ad03-98d896aec502" name="Default Changelist" comment="" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
   <component name="ProjectId" id="1XAYCaYHm64Vdz6w7lbWFAxyQjb" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showExcludedFiles" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+  </component>
+  <component name="RunManager" selected="Python.Bus-Client">
+    <configuration name="Bus-Client" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+      <module name="bus-4-u-v2" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Bus-Client.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="Server" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+      <module name="bus-4-u-v2" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Server.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="run my shit" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="bus-4-u-v2" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/run my shit.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Python.Server" />
+      <item itemvalue="Python.Bus-Client" />
+      <item itemvalue="Python.run my shit" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.run my shit" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SvnConfiguration">
+    <configuration />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="f0c23c6a-75e0-4a24-ad03-98d896aec502" name="Default Changelist" comment="" />
+      <created>1583407422644</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1583407422644</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="WindowStateProjectService">
+    <state x="222" y="159" key="#Servers" timestamp="1583408886743">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state x="222" y="159" key="#Servers/0.0.1280.984@0.0.1280.984" timestamp="1583408886743" />
+    <state x="84" y="155" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1583409036727">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state x="84" y="155" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.0.1280.984@0.0.1280.984" timestamp="1583409036727" />
+    <state x="385" y="303" key="#com.intellij.fileTypes.FileTypeChooser" timestamp="1583410031457">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state x="385" y="303" key="#com.intellij.fileTypes.FileTypeChooser/0.0.1280.984@0.0.1280.984" timestamp="1583410031457" />
+    <state width="1222" height="247" key="GridCell.Tab.0.bottom" timestamp="1583413911161">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state width="1222" height="247" key="GridCell.Tab.0.bottom/0.0.1280.984@0.0.1280.984" timestamp="1583413911161" />
+    <state width="1222" height="247" key="GridCell.Tab.0.center" timestamp="1583413911161">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state width="1222" height="247" key="GridCell.Tab.0.center/0.0.1280.984@0.0.1280.984" timestamp="1583413911161" />
+    <state width="1222" height="247" key="GridCell.Tab.0.left" timestamp="1583413911161">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state width="1222" height="247" key="GridCell.Tab.0.left/0.0.1280.984@0.0.1280.984" timestamp="1583413911161" />
+    <state width="1222" height="247" key="GridCell.Tab.0.right" timestamp="1583413911161">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state width="1222" height="247" key="GridCell.Tab.0.right/0.0.1280.984@0.0.1280.984" timestamp="1583413911161" />
+    <state width="1222" height="306" key="GridCell.Tab.1.bottom" timestamp="1583413843318">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state width="1222" height="306" key="GridCell.Tab.1.bottom/0.0.1280.984@0.0.1280.984" timestamp="1583413843318" />
+    <state width="1222" height="306" key="GridCell.Tab.1.center" timestamp="1583413843318">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state width="1222" height="306" key="GridCell.Tab.1.center/0.0.1280.984@0.0.1280.984" timestamp="1583413843318" />
+    <state width="1222" height="306" key="GridCell.Tab.1.left" timestamp="1583413843318">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state width="1222" height="306" key="GridCell.Tab.1.left/0.0.1280.984@0.0.1280.984" timestamp="1583413843318" />
+    <state width="1222" height="306" key="GridCell.Tab.1.right" timestamp="1583413843318">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state width="1222" height="306" key="GridCell.Tab.1.right/0.0.1280.984@0.0.1280.984" timestamp="1583413843318" />
+    <state x="131" y="143" key="SettingsEditor" timestamp="1583407438345">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state x="131" y="143" key="SettingsEditor/0.0.1280.984@0.0.1280.984" timestamp="1583407438345" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Server.py</url>
+          <line>276</line>
+          <option name="timeStamp" value="7" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
 </project>

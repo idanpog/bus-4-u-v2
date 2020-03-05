@@ -5,6 +5,9 @@ author: Idan Pogrebinsky
 """
 
 
+#before launching type pip install python-telegram-bot --upgrade in
+
+
 #TODO: add admin access
 
 
@@ -118,7 +121,7 @@ class TelegramController:
         message = update.message.text.lower().split(" ")
         line = int(message[1])
         station = int(message[2])
-        output = f"request accepted line:{line} at the {station}'s station"
+        output = f"request accepted, the bus is notified"
         if self.bus_controller.check_line(line):
             self.bus_controller.notify_bus(line, station)
         else:
@@ -236,29 +239,70 @@ class BusController:
         return count
 
     def displaybuseslocation(self):
+
+        if len(self.__bus_dict) == 0 and len(self.__stations_dict) == 0:
+            return [[]]
+
         bus_Dict = self.__bus_dict
         data = []
-        if len(bus_Dict) == 0:
-            return [[]]
+
+        #find the size of the table
+        if len(self.__bus_dict) == 0:
+            max_y_bus = 0
+        else:
+            max_y_bus = max(bus_Dict.keys())
+
+        if len(self.__stations_dict) == 0:
+            max_y_stations = 0
+        else:
+            max_y_stations = max(self.__stations_dict.keys())
+        max_y = max(max_y_bus, max_y_stations)
+
+        max_x_stations = 0
+        for stations in self.__stations_dict.values():
+            max_x_stations = max(max(stations.keys()), max_x_stations)
+        max_x_bus = 0
+
+        for buses in bus_Dict.values():
+            buses.sort(key=lambda bus: bus.get_station())
+            max_x_bus = max(buses[-1].get_station(), max_x_bus)
+        max_x = max(max_x_bus, max_x_stations)
+
+        for i in range(max_y):
+            data.append([" ",])
+            for j in range(max_x):
+                data[i].append(" ")
+
+
+        print("hey")
         for i in range(max(bus_Dict.keys())):
             #adds the bus numbers
-            data.append([f"{i + 1}"])
+            data[i][0] = ([f"{i + 1}"])
 
-
-        for lineNum, buses in bus_Dict.items():
-            # adds the buses and each line into the list
-            list = [f"{lineNum}"]
-            buses.sort(key=lambda bus: bus.get_station())
-            for i in range(int(buses[-1].get_station()) + 1):
-                # adds blank spaces
-                list.append(" ")
+        for line_bus, buses in bus_Dict.items():
             for bus in buses:
-                list[int(bus.get_station())] = "X"
-            data[lineNum - 1] = list
-        for linenum  in self.__stations_dict.keys():
-            for station_num in self.__stations_dict[linenum].keys():
-                print(f"{len(data)}, {len(data[lineNum-1])}")
-                data[linenum-1][station_num] = self.__stations_dict[linenum][station_num]
+                data[line_bus-1][bus.get_station()] = "X"
+
+        for linenumber, stations in self.__stations_dict.items():
+            for station, count in stations.items():
+                data[linenumber-1][station] = f"{count}"
+
+
+
+#        for lineNum, buses in bus_Dict.items():
+#           # adds the buses and each line into the list
+#            list = [f"{lineNum}"]
+#            buses.sort(key=lambda bus: bus.get_station())
+#            for i in range(int(buses[-1].get_station()) + 1):
+#                # adds blank spaces
+#                list.append(" ")
+#            for bus in buses:
+#                list[int(bus.get_station())] = "X"
+#            data[lineNum - 1] = list
+#        for linenum  in self.__stations_dict.keys():
+#            for station_num in self.__stations_dict[linenum].keys():
+#                print(f"{len(data)}, {len(data[lineNum-1])}")
+#                data[linenum-1][station_num] = self.__stations_dict[linenum][station_num]
 
         return data
 
@@ -309,7 +353,7 @@ def table(bus_controller):
     headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8"]
     window = Tk()
     window.geometry("700x500")
-    window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+    #window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
     window.title("buses")
     scrollX = Scrollbar(window, orient=HORIZONTAL)
     scrollY = Scrollbar(window, orient=VERTICAL)
