@@ -9,8 +9,7 @@ author: Idan Pogrebinsky
 
 
 #TODO: add admin access
-#TODO: add heartBeat to keep up with buses
-#TODO: send a starting message to buses so they will know the begings situation
+
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import socket
@@ -243,7 +242,7 @@ class BusController:
             count += len(line)
         return count
 
-    def __find_table_size(self):
+    def find_table_size(self):
         if len(self.__bus_dict) == 0:
             max_y_bus = 0
         else:
@@ -271,7 +270,7 @@ class BusController:
         if len(self.__bus_dict) == 0 and len(self.__stations_dict) == 0:
             return [[]]
 
-        max_x, max_y = self.__find_table_size()
+        max_x, max_y = self.find_table_size()
         bus_Dict = self.__bus_dict
         data = []
 
@@ -338,7 +337,7 @@ class BusController:
 
 
 def table(bus_controller):
-    headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8","9","10","11", "12", "13", "14"]
+    headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8","9","10","11", "12"]
     window = Tk()
     window.geometry("700x500")
     #window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
@@ -356,29 +355,27 @@ def table(bus_controller):
         tree.heading(headline, text=headline)
         tree.column(headline, anchor="center", width=35)
 
-    update(tree, window, bus_controller, scrollY, scrollX, headlines)
+    update(tree, window, bus_controller)
     window.mainloop()
 
 
-def update(tree, window, bus_controller, scrollY, scrollX, headlines):
-    update_Table(tree, window, bus_controller, scrollY, scrollX, headlines)
+def update(tree, window, bus_controller):
+    update_Table(tree, window, bus_controller)
     update_labels(tree, window, bus_controller)
-    window.after(2000, update, tree, window, bus_controller, scrollY, scrollX, headlines)
+    window.after(2000, update, tree, window, bus_controller)
 
 
-def update_Table(tree, window, bus_dict, scrollY, scrollX, headlines):
-    tree.destroy()
-    headlines.append("15")
-    tree = Treeview(window, show="headings", columns=headlines, yscrollcommand=scrollY.set, xscrollcommand=scrollX.set)
-    scrollY.config(command=tree.yview)
-    scrollY.place(x=480, height=480)
-    scrollX.config(command=tree.xview)
-    scrollX.place(x=0, y=480, width=480)
+def update_Table(tree, window, bus_controller):
 
+    headlines = ["", ]
+    headlines+=range(1, bus_controller.find_table_size()[0]+1)
+    tree.config(columns=headlines)
+    #tree.config(columns=["1","1","1","1","1","1"])
     for headline in headlines:
         tree.heading(headline, text=headline)
         tree.column(headline, anchor="center", width=35)
-    data = bus_dict.displaybuseslocation()
+
+    data = bus_controller.displaybuseslocation()
     for i in tree.get_children():
         tree.delete(i)
     for line in data:
