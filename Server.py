@@ -9,7 +9,8 @@ author: Idan Pogrebinsky
 
 
 #TODO: add admin access
-
+#TODO: add heartBeat to keep up with buses
+#TODO: send a starting message to buses so they will know the begings situation
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import socket
