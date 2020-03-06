@@ -125,7 +125,8 @@ class TelegramController:
         if self.bus_controller.check_line(line):
             self.bus_controller.notify_bus(line, station)
         else:
-            output = f"request failed line:{line} doesn't exist"
+            output = f"request accepted, but there are no buses available for that line yet"
+            self.bus_controller.notify_bus(line, station)
         self.log(update, output)
         update.message.reply_text(output)
 
@@ -222,6 +223,8 @@ class BusController:
                 self.__stations_dict[line][station] = 1
         else:
             self.__stations_dict[line] = {station: 1}
+        if line not in self.__bus_dict:
+            return
         for bus in self.__bus_dict[line]:
             try:
                 bus.update_passengers(station, self.__stations_dict[line][station])
@@ -231,6 +234,7 @@ class BusController:
 
 
         """the statiscitcs"""
+
     def countbuses(self):
         count = 0
         for line in self.__bus_dict.values():
@@ -238,19 +242,11 @@ class BusController:
             count += len(line)
         return count
 
-    def displaybuseslocation(self):
-
-        if len(self.__bus_dict) == 0 and len(self.__stations_dict) == 0:
-            return [[]]
-
-        bus_Dict = self.__bus_dict
-        data = []
-
-        #find the size of the table
+    def find_table_size(self):
         if len(self.__bus_dict) == 0:
             max_y_bus = 0
         else:
-            max_y_bus = max(bus_Dict.keys())
+            max_y_bus = max(self.__bus_dict.keys())
 
         if len(self.__stations_dict) == 0:
             max_y_stations = 0
@@ -263,19 +259,27 @@ class BusController:
             max_x_stations = max(max(stations.keys()), max_x_stations)
         max_x_bus = 0
 
-        for buses in bus_Dict.values():
+        for buses in self.__bus_dict.values():
             buses.sort(key=lambda bus: bus.get_station())
             max_x_bus = max(buses[-1].get_station(), max_x_bus)
         max_x = max(max_x_bus, max_x_stations)
+
+        return max_x, max_y
+    def displaybuseslocation(self):
+
+        if len(self.__bus_dict) == 0 and len(self.__stations_dict) == 0:
+            return [[]]
+
+        max_x, max_y = self.find_table_size()
+        bus_Dict = self.__bus_dict
+        data = []
 
         for i in range(max_y):
             data.append([" ",])
             for j in range(max_x):
                 data[i].append(" ")
 
-
-        print("hey")
-        for i in range(max(bus_Dict.keys())):
+        for i in range(max_y):
             #adds the bus numbers
             data[i][0] = ([f"{i + 1}"])
 
@@ -286,23 +290,6 @@ class BusController:
         for linenumber, stations in self.__stations_dict.items():
             for station, count in stations.items():
                 data[linenumber-1][station] = f"{count}"
-
-
-
-#        for lineNum, buses in bus_Dict.items():
-#           # adds the buses and each line into the list
-#            list = [f"{lineNum}"]
-#            buses.sort(key=lambda bus: bus.get_station())
-#            for i in range(int(buses[-1].get_station()) + 1):
-#                # adds blank spaces
-#                list.append(" ")
-#            for bus in buses:
-#                list[int(bus.get_station())] = "X"
-#            data[lineNum - 1] = list
-#        for linenum  in self.__stations_dict.keys():
-#            for station_num in self.__stations_dict[linenum].keys():
-#                print(f"{len(data)}, {len(data[lineNum-1])}")
-#                data[linenum-1][station_num] = self.__stations_dict[linenum][station_num]
 
         return data
 
@@ -350,7 +337,7 @@ class BusController:
 
 
 def table(bus_controller):
-    headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8"]
+    headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8","9","10","11", "12"]
     window = Tk()
     window.geometry("700x500")
     #window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
@@ -378,8 +365,17 @@ def update(tree, window, bus_controller):
     window.after(2000, update, tree, window, bus_controller)
 
 
-def update_Table(tree, window, bus_dict):
-    data = bus_dict.displaybuseslocation()
+def update_Table(tree, window, bus_controller):
+
+    headlines = ["", ]
+    headlines+=range(1, bus_controller.find_table_size()[0]+1)
+    tree.config(columns=headlines)
+    #tree.config(columns=["1","1","1","1","1","1"])
+    for headline in headlines:
+        tree.heading(headline, text=headline)
+        tree.column(headline, anchor="center", width=35)
+
+    data = bus_controller.displaybuseslocation()
     for i in tree.get_children():
         tree.delete(i)
     for line in data:
@@ -392,9 +388,9 @@ def update_labels(tree, window, bus_controller):
     number_of_buses_label = Label(window, text="Number of buses in the system: " + str(bus_controller.countbuses()))
     number_of_people_lable = Label(window, text="Number of people waiting: " + str(bus_controller.countpeople()))
 
-    active_lines_label.place(x=480, y=0)
-    number_of_buses_label.place(x=480, y=30)
-    number_of_people_lable.place(x=480, y=60)
+    active_lines_label.place(x=500, y=0)
+    number_of_buses_label.place(x=500, y=30)
+    number_of_people_lable.place(x=500, y=60)
 
 
 def main():
