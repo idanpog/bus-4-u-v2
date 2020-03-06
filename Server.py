@@ -9,7 +9,8 @@ author: Idan Pogrebinsky
 
 
 #TODO: add admin access
-
+#TODO: add heartbeat
+#TODO:update bus when it joins the system
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import socket
