@@ -131,7 +131,6 @@ def launch_GUI(bus):
     update(tree, window, bus)
     window.mainloop()
 
-
 ID = "bus1"
 line_number = 14
 station = 5
