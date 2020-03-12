@@ -124,10 +124,10 @@ class TelegramController:
         station = int(message[2])
         output = f"request accepted, the bus is notified"
         if self.bus_controller.check_line(line):
-            self.bus_controller.notify_bus(line, station)
+            self.bus_controller.notify_buses_about_people(line, station)
         else:
             output = f"request accepted, but there are no buses available for that line yet"
-            self.bus_controller.notify_bus(line, station)
+            self.bus_controller.notify_buses_about_people(line, station)
         self.log(update, output)
         update.message.reply_text(output)
 
@@ -149,7 +149,7 @@ class BusController:
         self.__bus_stations_port = 8201
 
         self.__ipv4 = (socket.gethostbyname(socket.gethostname()))
-        self.__bus_dict = {}
+        self.__bus_dict = {} #self.__bus_dict[line_num] holds an array that contains all the buses
         self.__stations_dict = {}
 
     def get_bus_dict(self):
@@ -196,14 +196,18 @@ class BusController:
             bus = self.Bus(addr, line_num, station, ID)
             self.__add_bus(bus)
             client_socket.close()
+            self.__notify_buses_about_buses(line_num)
             print(f"successfully added Bus -> {bus}")
 
     def __add_bus(self, bus):
 
         if bus.get_line_num() in self.__bus_dict:
             self.__bus_dict[bus.get_line_num()].append(bus)
+            print("added bus")
         else:
             self.__bus_dict[bus.get_line_num()] = [bus,]
+            print("added bus in a new array")
+        print("should've added a bus")
 
 
 
@@ -213,9 +217,9 @@ class BusController:
     def remove_bus(self, bus):
         self.__bus_dict[bus.get_line_num()].remove(bus)
 
-    def notify_bus(self, line, station):
-        #updates the dictionary that keeps track for all the passengers
-        #self.__stations_dict[line][station] = number of people waitig at the current station for that line
+    def notify_buses_about_people(self, line, station):
+        # updates the dictionary that keeps track for all the passengers
+        # self.__stations_dict[line][station] = number of people waitig at the current station for that line
         print("in notify bus")
         if line in self.__stations_dict:
             if station in self.__stations_dict[line]:
@@ -226,15 +230,31 @@ class BusController:
             self.__stations_dict[line] = {station: 1}
         if line not in self.__bus_dict:
             return
-        for bus in self.__bus_dict[line]:
-            try:
-                bus.update_passengers(station, self.__stations_dict[line][station])
-            except:
-                print(f"{bus} is unavailable, kicked out of the system")
-                self.__bus_dict[line].remove(bus)
+        data = f"people {station} {self.__stations_dict[line][station]}"
+        self.__send_to_all_buses(line, data)
+
 
 
         """the statiscitcs"""
+
+    def __notify_buses_about_buses(self, line_num):
+        data = ""
+        line_num= int(line_num)
+        for bus in self.__bus_dict[line_num]:
+            data+=str(bus.get_station()) + ","
+        data = data[0:-1:]
+        self.__send_to_all_buses(line_num, data)
+
+
+    def __send_to_all_buses(self, line_num, data):
+        for bus in self.__bus_dict[line_num]:
+            bus.send_to_bus(data)
+            """try:
+                print(f"trying to update_passengers for bus: {bus}")
+                bus.send_to_bus(data)
+            except:
+                print(f"{bus} is unavailable, kicked out of the system")
+                self.__bus_dict[line_num].remove(bus)"""
 
     def countbuses(self):
         count = 0
@@ -261,8 +281,9 @@ class BusController:
         max_x_bus = 0
 
         for buses in self.__bus_dict.values():
-            buses.sort(key=lambda bus: bus.get_station())
-            max_x_bus = max(buses[-1].get_station(), max_x_bus)
+            if len(buses)!=0:
+                buses.sort(key=lambda bus: bus.get_station())
+                max_x_bus = max(buses[-1].get_station(), max_x_bus)
         max_x = max(max_x_bus, max_x_stations)
 
         return max_x, max_y
@@ -324,14 +345,24 @@ class BusController:
             return self.__ID
 
         def update_passengers(self, station, passengers):
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print("created socket")
-            s.connect((self.__address[0], BusController.PASSENGERS_PORT))
             #data = {station} {number_of_people}
-            data = f"{station} {passengers}"
-            s.send(data.encode())
-            s.close()
+            print("tying to send_to_bus")
+            data = f"people {station} {passengers}"
+            self.send_to_bus(data)
 
+        def send_to_bus(self, data):
+            print("trying to open socket")
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            print("trying to connect")
+            s.connect((self.__address[0], BusController.PASSENGERS_PORT))
+            # data = {people} {station} {number_of_people}
+            # data = {buses} {bus1,bus2,bus3,...busn}
+            print("trying to encode")
+            data  = str(data).encode()
+            print("trying to send")
+            s.send(data)
+            print("closing")
+            s.close()
 
         def __str__(self):
             return f"line number: [{self.__line_number}], Current station [{self.__station}] \naddress: {self.__address}"

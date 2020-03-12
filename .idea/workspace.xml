@@ -28,7 +28,7 @@
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
-  <component name="RunManager" selected="Python.Server">
+  <component name="RunManager" selected="Python.Bus-Client">
     <configuration name="Bus-Client" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
       <module name="bus-4-u-v2" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -57,9 +57,9 @@
       <envs>
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
-      <option name="SDK_HOME" value="" />
+      <option name="SDK_HOME" value="C:\Users\cu2\Documents\GitHub\bus-4-u-v2\venv\Scripts\python.exe" />
       <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
-      <option name="IS_MODULE_SDK" value="true" />
+      <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Server.py" />
@@ -117,54 +117,66 @@
     <servers />
   </component>
   <component name="WindowStateProjectService">
+    <state x="359" y="106" key="#Server" timestamp="1584011090838">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state x="359" y="106" key="#Server/0.0.1280.984@0.0.1280.984" timestamp="1584011090838" />
     <state x="222" y="159" key="#Servers" timestamp="1583408886743">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
     <state x="222" y="159" key="#Servers/0.0.1280.984@0.0.1280.984" timestamp="1583408886743" />
-    <state x="84" y="155" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1583409036727">
+    <state x="84" y="155" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1584011320492">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state x="84" y="155" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.0.1280.984@0.0.1280.984" timestamp="1583409036727" />
-    <state x="385" y="303" key="#com.intellij.fileTypes.FileTypeChooser" timestamp="1583410031457">
+    <state x="84" y="155" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.0.1280.984@0.0.1280.984" timestamp="1584011320492" />
+    <state x="385" y="303" key="#com.intellij.fileTypes.FileTypeChooser" timestamp="1584011221522">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state x="385" y="303" key="#com.intellij.fileTypes.FileTypeChooser/0.0.1280.984@0.0.1280.984" timestamp="1583410031457" />
-    <state width="1222" height="306" key="GridCell.Tab.0.bottom" timestamp="1583416613996">
+    <state x="385" y="303" key="#com.intellij.fileTypes.FileTypeChooser/0.0.1280.984@0.0.1280.984" timestamp="1584011221522" />
+    <state width="378" height="466" key="DebuggerActiveHint" timestamp="1584015492338">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state width="1222" height="306" key="GridCell.Tab.0.bottom/0.0.1280.984@0.0.1280.984" timestamp="1583416613996" />
-    <state width="1222" height="306" key="GridCell.Tab.0.center" timestamp="1583416613996">
+    <state width="378" height="466" key="DebuggerActiveHint/0.0.1280.984@0.0.1280.984" timestamp="1584015492338" />
+    <state width="1259" height="263" key="GridCell.Tab.0.bottom" timestamp="1584019981488">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state width="1222" height="306" key="GridCell.Tab.0.center/0.0.1280.984@0.0.1280.984" timestamp="1583416613996" />
-    <state width="1222" height="306" key="GridCell.Tab.0.left" timestamp="1583416613996">
+    <state width="1259" height="263" key="GridCell.Tab.0.bottom/0.0.1280.984@0.0.1280.984" timestamp="1584019981488" />
+    <state width="1259" height="263" key="GridCell.Tab.0.center" timestamp="1584019981487">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state width="1222" height="306" key="GridCell.Tab.0.left/0.0.1280.984@0.0.1280.984" timestamp="1583416613996" />
-    <state width="1222" height="306" key="GridCell.Tab.0.right" timestamp="1583416613996">
+    <state width="1259" height="263" key="GridCell.Tab.0.center/0.0.1280.984@0.0.1280.984" timestamp="1584019981487" />
+    <state width="1259" height="263" key="GridCell.Tab.0.left" timestamp="1584019981487">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state width="1222" height="306" key="GridCell.Tab.0.right/0.0.1280.984@0.0.1280.984" timestamp="1583416613996" />
-    <state width="1222" height="306" key="GridCell.Tab.1.bottom" timestamp="1583416613996">
+    <state width="1259" height="263" key="GridCell.Tab.0.left/0.0.1280.984@0.0.1280.984" timestamp="1584019981487" />
+    <state width="1259" height="263" key="GridCell.Tab.0.right" timestamp="1584019981487">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state width="1222" height="306" key="GridCell.Tab.1.bottom/0.0.1280.984@0.0.1280.984" timestamp="1583416613996" />
-    <state width="1222" height="306" key="GridCell.Tab.1.center" timestamp="1583416613996">
+    <state width="1259" height="263" key="GridCell.Tab.0.right/0.0.1280.984@0.0.1280.984" timestamp="1584019981487" />
+    <state width="1259" height="325" key="GridCell.Tab.1.bottom" timestamp="1584019668599">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state width="1222" height="306" key="GridCell.Tab.1.center/0.0.1280.984@0.0.1280.984" timestamp="1583416613996" />
-    <state width="1222" height="306" key="GridCell.Tab.1.left" timestamp="1583416613996">
+    <state width="1259" height="325" key="GridCell.Tab.1.bottom/0.0.1280.984@0.0.1280.984" timestamp="1584019668599" />
+    <state width="1259" height="325" key="GridCell.Tab.1.center" timestamp="1584019668599">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state width="1222" height="306" key="GridCell.Tab.1.left/0.0.1280.984@0.0.1280.984" timestamp="1583416613996" />
-    <state width="1222" height="306" key="GridCell.Tab.1.right" timestamp="1583416613996">
+    <state width="1259" height="325" key="GridCell.Tab.1.center/0.0.1280.984@0.0.1280.984" timestamp="1584019668599" />
+    <state width="1259" height="325" key="GridCell.Tab.1.left" timestamp="1584019668599">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state width="1222" height="306" key="GridCell.Tab.1.right/0.0.1280.984@0.0.1280.984" timestamp="1583416613996" />
-    <state x="131" y="143" key="SettingsEditor" timestamp="1583407438345">
+    <state width="1259" height="325" key="GridCell.Tab.1.left/0.0.1280.984@0.0.1280.984" timestamp="1584019668599" />
+    <state width="1259" height="325" key="GridCell.Tab.1.right" timestamp="1584019668599">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
-    <state x="131" y="143" key="SettingsEditor/0.0.1280.984@0.0.1280.984" timestamp="1583407438345" />
+    <state width="1259" height="325" key="GridCell.Tab.1.right/0.0.1280.984@0.0.1280.984" timestamp="1584019668599" />
+    <state x="93" y="179" key="SettingsEditor" timestamp="1584011473438">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state x="93" y="179" key="SettingsEditor/0.0.1280.984@0.0.1280.984" timestamp="1584011473438" />
+    <state x="342" y="319" key="com.intellij.ide.util.TipDialog" timestamp="1584010876242">
+      <screen x="0" y="0" width="1280" height="984" />
+    </state>
+    <state x="342" y="319" key="com.intellij.ide.util.TipDialog/0.0.1280.984@0.0.1280.984" timestamp="1584010876242" />
     <state x="293" y="234" width="672" height="678" key="search.everywhere.popup" timestamp="1583415618590">
       <screen x="0" y="0" width="1280" height="984" />
     </state>
@@ -175,8 +187,13 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/Server.py</url>
-          <line>279</line>
-          <option name="timeStamp" value="7" />
+          <line>255</line>
+          <option name="timeStamp" value="14" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Server.py</url>
+          <line>359</line>
+          <option name="timeStamp" value="21" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

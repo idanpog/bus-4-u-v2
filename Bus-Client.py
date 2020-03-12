@@ -11,18 +11,20 @@ class Bus:
     STATIONS_PORT=8201
     PASSENGERS_PORT=8202
     #HOST = socket.gethostbyname(socket.gethostname())
-    HOST = "192.168.56.1" #this client's IP
-    ServerIP ="192.168.56.1" # the server's IP
+    HOST = "169.254.216.223" #this client's IP
+    ServerIP ="169.254.216.223" # the server's IP
     def __init__(self, line_number, station, ID):
         self.__station = int(station)
         self.__line_number = int(line_number)
         self.__ID = ID
         self.__stations = {}
+        self.__buses = []
 
     def connect_to_server(self):
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         Socket.connect((Bus.ServerIP, Bus.NEW_CONNECTION_PORT))
         data = f"{self.__line_number} {self.__station} {self.__ID}"
+
         Socket.send(data.encode())
         Socket.close()
 
@@ -34,24 +36,30 @@ class Bus:
         Socket.send(data.encode())
         Socket.close()
 
-    def start_tracking_people(self):
-        people_tracking_thread = threading.Thread(target=self.__track_people, args=(), name="people_tracker")
-        people_tracking_thread.start()
+    def start_tracking_updates(self):
+        update_tracking_thread = threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
+        update_tracking_thread.start()
 
-    def __track_people(self):
+    def __track_updates(self):
         while True:
             # establish a connection
             Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             Socket.bind((Bus.HOST, Bus.PASSENGERS_PORT))
             Socket.listen(1)
             client_socket, addr = Socket.accept()
-            print("print getting an update from the server")
-            data = client_socket.recv(1024)
-            # data  = {station} {number_of_people}
-            station, number_of_people = data.decode().split(" ")
-            self.__stations[int(station)] = int(number_of_people)
+            data = client_socket.recv(1024).decode()
+            # data  = {"people"} {station} {number_of_people}
+            # data  = {"buses"} {bus1,bus2,bus3....,busn}
+            print(data)
+            if data.split(" ")[0] == "people":
+                type_of_input, station, number_of_people = data.split(" ")
+                self.__stations[int(station)] = int(number_of_people)
+                print(f"{number_of_people} are waiting at station number {station}, ID:{self.__ID}")
+            elif data.split(" ")[0] == "buses":
+                self.__buses = data.split(" ")[1].split(",")
+
             Socket.close()
-            print(f"{number_of_people} are waiting at station number {station}, ID:{self.__ID}")
+
 
     def get_number_of_stations(self):
         if (len(self.__stations) == 0):
@@ -129,7 +137,7 @@ line_number = 14
 station = 5
 bus1 = Bus(line_number, station, ID)
 bus1.connect_to_server()
-bus1.start_tracking_people()
+bus1.start_tracking_updates()
 
 launch_GUI(bus1)
 while True:
