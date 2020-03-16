@@ -46,7 +46,6 @@ class TelegramController:
         updater.start_polling()
         # logging.getLogger()
         # updater.idle()
-        print("Bot Loaded")
 
     @staticmethod
     def help(update, context):
@@ -74,28 +73,20 @@ class TelegramController:
 
     @staticmethod
     def __has_history(ID):
-        print("searching for history")
         header = connect("banlist.db")
-        print("connected to header")
         curs = header.cursor()
-        print("connected the cursor")
         curs.execute("SELECT * FROM history WHERE ID = (?)", (ID,))
-        print("executed")
         data = curs.fetchall()
-        print("fetched")
         return len(data) >= 1
 
     def history(self, update, context):
         message = update.message.text.lower().split(" ")
         ID = update.message.from_user.id
         name = update.message.from_user.name
-        print("dealing with history")
         if message[1] == "show":
-            print("show")
             if not self.__has_history(ID):
                 output = "you don't have any history"
                 update.message.reply_text(output)
-                print(output)
                 self.log(update, output)
                 return
             header = connect("banlist.db")
@@ -197,17 +188,14 @@ class BusController:
             self.__add_bus(bus)
             client_socket.close()
             self.__notify_buses_about_buses(line_num)
-            print(f"successfully added Bus -> {bus}")
+
 
     def __add_bus(self, bus):
 
         if bus.get_line_num() in self.__bus_dict:
             self.__bus_dict[bus.get_line_num()].append(bus)
-            print("added bus")
         else:
             self.__bus_dict[bus.get_line_num()] = [bus,]
-            print("added bus in a new array")
-        print("should've added a bus")
 
 
 
@@ -217,10 +205,9 @@ class BusController:
     def remove_bus(self, bus):
         self.__bus_dict[bus.get_line_num()].remove(bus)
 
-    def notify_buses_about_people(self, line, station):
+    def __notify_buses_about_people(self, line, station):
         # updates the dictionary that keeps track for all the passengers
         # self.__stations_dict[line][station] = number of people waitig at the current station for that line
-        print("in notify bus")
         if line in self.__stations_dict:
             if station in self.__stations_dict[line]:
                 self.__stations_dict[line][station] += 1
@@ -233,28 +220,25 @@ class BusController:
         data = f"people {station} {self.__stations_dict[line][station]}"
         self.__send_to_all_buses(line, data)
 
-
-
-        """the statiscitcs"""
-
     def __notify_buses_about_buses(self, line_num):
         data = ""
-        line_num= int(line_num)
+        line_num = int(line_num)
         for bus in self.__bus_dict[line_num]:
-            data+=str(bus.get_station()) + ","
+            data += str(bus.get_station()) + ","
         data = data[0:-1:]
         self.__send_to_all_buses(line_num, data)
 
-
     def __send_to_all_buses(self, line_num, data):
         for bus in self.__bus_dict[line_num]:
-            bus.send_to_bus(data)
-            """try:
-                print(f"trying to update_passengers for bus: {bus}")
+            try:
                 bus.send_to_bus(data)
             except:
                 print(f"{bus} is unavailable, kicked out of the system")
-                self.__bus_dict[line_num].remove(bus)"""
+                self.__bus_dict[line_num].remove(bus)
+
+
+    """the statiscitcs"""
+
 
     def countbuses(self):
         count = 0
@@ -351,17 +335,12 @@ class BusController:
             self.send_to_bus(data)
 
         def send_to_bus(self, data):
-            print("trying to open socket")
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print("trying to connect")
             s.connect((self.__address[0], BusController.PASSENGERS_PORT))
             # data = {people} {station} {number_of_people}
             # data = {buses} {bus1,bus2,bus3,...busn}
-            print("trying to encode")
             data  = str(data).encode()
-            print("trying to send")
             s.send(data)
-            print("closing")
             s.close()
 
         def __str__(self):
@@ -434,7 +413,6 @@ def main():
     """start the Telegram Bot"""
     steve = TelegramController("990223452:AAHrln4bCzwGpkR2w-5pqesPHpuMjGKuJUI", myserver)
     threading.Thread(steve.start(), args=())
-    print("ServerLoaded")
     table(myserver)
 
 

@@ -11,8 +11,8 @@ class Bus:
     STATIONS_PORT=8201
     PASSENGERS_PORT=8202
     #HOST = socket.gethostbyname(socket.gethostname())
-    HOST = "169.254.216.223" #this client's IP
-    ServerIP ="169.254.216.223" # the server's IP
+    HOST = "192.168.3.11" #this client's IP
+    ServerIP ="192.168.3.11" # the server's IP
     def __init__(self, line_number, station, ID):
         self.__station = int(station)
         self.__line_number = int(line_number)
@@ -45,7 +45,7 @@ class Bus:
             # establish a connection
             Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             Socket.bind((Bus.HOST, Bus.PASSENGERS_PORT))
-            Socket.listen(1)
+            Socket.listen(2)
             client_socket, addr = Socket.accept()
             data = client_socket.recv(1024).decode()
             # data  = {"people"} {station} {number_of_people}
