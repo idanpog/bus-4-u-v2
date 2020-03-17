@@ -1,7 +1,10 @@
 #by Idan Pogrebinsky
 
+
+#TODO: add Next button, and leave
 import socket
 import threading
+import tkinter
 from tkinter import *
 from tkinter.ttk import Treeview
 from time import sleep
@@ -22,18 +25,20 @@ class Bus:
         self.__buses = []
 
     def connect_to_server(self):
+        data = f"{self.__line_number} {self.__station} {self.__ID}"
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         Socket.connect((Bus.ServerIP, Bus.NEW_CONNECTION_PORT))
-        data = f"{self.__line_number} {self.__station} {self.__ID}"
-
         Socket.send(data.encode())
         Socket.close()
 
-    def update_station(self, station):
+    def next_station(self):
+        self.__station +=1
+        data = f"{self.__line_number} {self.__station} {self.__ID}"
+        self.__send_to_server(data)
+
+    def __send_to_server(self, data):
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__station = station
         Socket.connect((Bus.ServerIP, Bus.STATIONS_PORT))
-        data = f"{self.__line_number} {station} {self.__ID}"
         Socket.send(data.encode())
         Socket.close()
 
@@ -46,7 +51,7 @@ class Bus:
             # establish a connection
             Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             Socket.bind((Bus.HOST, Bus.PASSENGERS_PORT))
-            Socket.listen(2)
+            Socket.listen(1)
             client_socket, addr = Socket.accept()
             data = client_socket.recv(1024).decode()
             # data  = {"people"} {station} {number_of_people}
@@ -86,8 +91,8 @@ class Bus:
             list[station-1] = str(count)
 
         for station in self.__buses:
-            list[station-1] = "other bus"
-        list[self.__station-1] = "this Bus"
+            list[station-1] = "bus"
+        list[self.__station-1] = "me"
 
         return list
 
@@ -134,13 +139,21 @@ def update_labels(tree, window, bus_controller):
     #number_of_people_lable.place(x=500, y=60)
     pass
 
+def place_buttons(tree, window, bus):
+    next_button = tkinter.Button(window, text="Next Station", command=bus.next_station, width = 25, height= 2,
+                                 activebackground = "gray")
+    next_button.place(x = 50, y = 100)
+
+
 def launch_GUI(bus):
     window = Tk()
     window.geometry("472x150")
+    #window.geometry("472x350")
     window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
     window.title("my stations")
     window.resizable(OFF, OFF)
     tree = table(bus, window)
+    place_buttons(tree, window, bus)
     update(tree, window, bus)
     window.mainloop()
 
@@ -152,8 +165,7 @@ bus1.connect_to_server()
 bus1.start_tracking_updates()
 
 launch_GUI(bus1)
-while True:
-    bus1.update_station(input("what station are you at currently"))
+
 
 
 
