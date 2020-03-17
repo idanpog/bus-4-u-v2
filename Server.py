@@ -111,6 +111,7 @@ class TelegramController:
         /bus {line} {station}
         adds the request into the system, sends a message to the bus and logs the request in the logs"""
         message = update.message.text.lower().split(" ")
+        print(f"handling request : {message}")
         line = int(message[1])
         station = int(message[2])
         output = f"request accepted, the bus is notified"
@@ -118,7 +119,6 @@ class TelegramController:
             self.bus_controller.notify_buses_about_people(line, station)
         else:
             output = f"request accepted, but there are no buses available for that line yet"
-            self.bus_controller.notify_buses_about_people(line, station)
         self.log(update, output)
         update.message.reply_text(output)
 
@@ -205,9 +205,10 @@ class BusController:
     def remove_bus(self, bus):
         self.__bus_dict[bus.get_line_num()].remove(bus)
 
-    def __notify_buses_about_people(self, line, station):
+    def notify_buses_about_people(self, line, station):
         # updates the dictionary that keeps track for all the passengers
         # self.__stations_dict[line][station] = number of people waitig at the current station for that line
+        print("in __notify_buses_about_people")
         if line in self.__stations_dict:
             if station in self.__stations_dict[line]:
                 self.__stations_dict[line][station] += 1
@@ -221,7 +222,7 @@ class BusController:
         self.__send_to_all_buses(line, data)
 
     def __notify_buses_about_buses(self, line_num):
-        data = ""
+        data = "buses "
         line_num = int(line_num)
         for bus in self.__bus_dict[line_num]:
             data += str(bus.get_station()) + ","
@@ -235,6 +236,7 @@ class BusController:
             except:
                 print(f"{bus} is unavailable, kicked out of the system")
                 self.__bus_dict[line_num].remove(bus)
+                self.__notify_buses_about_buses(bus.get_line_num())
 
 
     """the statiscitcs"""

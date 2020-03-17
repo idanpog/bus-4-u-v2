@@ -18,6 +18,7 @@ class Bus:
         self.__line_number = int(line_number)
         self.__ID = ID
         self.__stations = {}
+        # stores
         self.__buses = []
 
     def connect_to_server(self):
@@ -55,18 +56,28 @@ class Bus:
                 type_of_input, station, number_of_people = data.split(" ")
                 self.__stations[int(station)] = int(number_of_people)
                 print(f"{number_of_people} are waiting at station number {station}, ID:{self.__ID}")
+
             elif data.split(" ")[0] == "buses":
                 self.__buses = data.split(" ")[1].split(",")
+                map_object = map(int, self.__buses)
+                self.__buses = list(map_object)
+                print(f"edited self.__buses, looks like {self.__buses}")
 
             Socket.close()
 
 
     def get_number_of_stations(self):
-        if (len(self.__stations) == 0):
-            return max(station,10)
-        return max(station, max(self.__stations.keys()), 10)
+        #finds how big the table has to be
+        # min size = 10
+        biggest = max(self.__station, 10)
+        if (len(self.__stations) != 0):
+            biggest = max(max(self.__stations.keys()), biggest)
+        if len(self.__buses)!= 0:
+            biggest = max(biggest, max(self.__buses))
+        return biggest
 
     def display_passengers(self):
+        print(f"in display passengers and it looks like {self.__buses}")
         list = [""]
         for i in range(self.get_number_of_stations()+1):
             list.append("")
@@ -74,7 +85,9 @@ class Bus:
         for station, count in self.__stations.items():
             list[station-1] = str(count)
 
-        list[self.__station-1] = "x"
+        for station in self.__buses:
+            list[station-1] = "other bus"
+        list[self.__station-1] = "this Bus"
 
         return list
 
