@@ -129,6 +129,7 @@ class BusController:
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
     PASSENGERS_PORT = 8202
+    HEART_BEAT_PORT = 8203
     HOST = socket.gethostbyname(socket.gethostname())
 
     def __init__(self):
@@ -147,10 +148,11 @@ class BusController:
         return self.__bus_dict
 
     def start(self):
-        new_bus_reciever =threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
-        new_bus_reciever.start()
+        new_bus_receiver =threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
+        new_bus_receiver.start()
         updates_tracker =threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
         updates_tracker.start()
+        threading.Thread(target=self.__heart, args=(), name="Heart beats").start()
 
     def __track_updates(self):
         self.__bus_stations_Socket.bind((self.__ipv4, self.__bus_stations_port))
@@ -190,21 +192,12 @@ class BusController:
             client_socket.close()
             self.__notify_buses_about_buses(line_num)
 
-
     def __add_bus(self, bus):
         print(f"added bus {bus}")
         if bus.get_line_num() in self.__bus_dict:
             self.__bus_dict[bus.get_line_num()].append(bus)
         else:
             self.__bus_dict[bus.get_line_num()] = [bus,]
-
-
-
-    def check_line(self, line):
-        return int(line) in self.__bus_dict
-
-    def remove_bus(self, bus):
-        self.__bus_dict[bus.get_line_num()].remove(bus)
 
     def notify_buses_about_people(self, line, station):
         # updates the dictionary that keeps track for all the passengers
@@ -237,8 +230,46 @@ class BusController:
                 bus.send_to_bus(data)
             except:
                 print(f"{bus} is unavailable, kicked out of the system")
-                self.__bus_dict[line_num].remove(bus)
+                self.remove_bus(bus)
                 self.__notify_buses_about_buses(bus.get_line_num())
+
+
+    def __heart(self):
+        # will be launched in a separate thread and cycle the command pulse for all the buses every 20 seconds
+        while True:
+            self.__pulse_all()
+            sleep(5)
+
+    def __pulse_all(self):
+        #will launch a thread for each bus that will use the command indevidual_pulse
+        if len(self.__bus_dict)==0:
+            return
+        for line in self.__bus_dict.values():
+            for bus in line:
+                threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.get_ID()}").start()
+
+    def __indevidual_pulse(self, bus):
+        # will send the bus a message
+        # data = "Check"
+        # and wait for a response from the bus with his ID
+        # if the bus isn't responding, or sent the wrong ID he'll be kicked.
+        if not bus.check_up():
+            print("bus found inactive")
+            self.remove_bus(bus)
+
+
+    def check_line(self, line):
+        return int(line) in self.__bus_dict
+
+    def remove_bus(self, bus):
+        print(f"removed: {bus}")
+        self.__bus_dict[bus.get_line_num()].remove(bus)
+        if len(self.__bus_dict[bus.get_line_num()]) == 0:
+            print("removed the whole line")
+            del self.__bus_dict[bus.get_line_num()]
+        self.__notify_buses_about_buses(bus.get_line_num())
+
+
 
 
     """the statiscitcs"""
@@ -275,6 +306,7 @@ class BusController:
         max_x = max(max_x_bus, max_x_stations)
 
         return max_x, max_y
+
     def displaybuseslocation(self):
 
         if len(self.__bus_dict) == 0 and len(self.__stations_dict) == 0:
@@ -346,6 +378,26 @@ class BusController:
             data  = str(data).encode()
             s.send(data)
             s.close()
+
+        def check_up(self):
+            #send a Check notification
+            #returs True if everything is valid and false if the bus returned the wrong ID or didn't respond
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            output = True
+            try:
+                s.connect((self.__address[0], BusController.HEART_BEAT_PORT))
+                data = "Check".encode()
+                s.send(data)
+                data = s.recv(1024).decode()
+                if int(data) != int(self.__ID):
+                    print(f"bus had the wrong ID\nwas supposed to be {self.__ID}, but received {data}")
+                    output = False
+            #listen for an answer
+            except:
+                print(f"something went wrong, couldn't establish connection with {self.__address}")
+                output = False
+            s.close()
+            return output
 
         def __str__(self):
             return f"line number: [{self.__line_number}], Current station [{self.__station}] \naddress: {self.__address}"

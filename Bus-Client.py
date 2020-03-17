@@ -14,6 +14,7 @@ class Bus:
     NEW_CONNECTION_PORT=8200
     STATIONS_PORT=8201
     PASSENGERS_PORT=8202
+    HEART_BEAT_PORT=8203
     #HOST = socket.gethostbyname(socket.gethostname())
     HOST = "192.168.3.11" #this client's IP
     ServerIP ="192.168.3.11" # the server's IP
@@ -25,27 +26,31 @@ class Bus:
         # stores
         self.__buses = []
 
-    def connect_to_server(self):
+
+    def __respond_to_heartbeats(self):
+        Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        Socket.bind((self.HOST, self.HEART_BEAT_PORT))
+        Socket.listen(1)
+        while True:
+            client_socket, addr = Socket.accept()
+            data = client_socket.recv(1024).decode()
+            print(data)
+            client_socket.send(str(self.__ID).encode())
+
+
+    def __connect_to_server(self):
         data = f"{self.__line_number} {self.__station} {self.__ID}"
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         Socket.connect((Bus.ServerIP, Bus.NEW_CONNECTION_PORT))
         Socket.send(data.encode())
         Socket.close()
 
-    def next_station(self):
-        self.__station +=1
-        data = f"{self.__line_number} {self.__station} {self.__ID}"
-        self.__send_to_server(data)
-
-    def __send_to_server(self, data):
-        Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        Socket.connect((Bus.ServerIP, Bus.STATIONS_PORT))
-        Socket.send(data.encode())
-        Socket.close()
-
-    def start_tracking_updates(self):
+    def start(self):
+        self.__connect_to_server()
         update_tracking_thread = threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
         update_tracking_thread.start()
+        heartbeats_thread = threading.Thread(target=self.__respond_to_heartbeats, args=(), name="heartbeats_thread")
+        heartbeats_thread.start()
 
     def __track_updates(self):
         while True:
@@ -71,6 +76,16 @@ class Bus:
 
             Socket.close()
 
+    def next_station(self):
+        self.__station +=1
+        data = f"{self.__line_number} {self.__station} {self.__ID}"
+        self.__send_to_server(data)
+
+    def __send_to_server(self, data):
+        Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        Socket.connect((Bus.ServerIP, Bus.STATIONS_PORT))
+        Socket.send(data.encode())
+        Socket.close()
 
     def get_number_of_stations(self):
         #finds how big the table has to be
@@ -162,8 +177,7 @@ ID = str(random.randint(1,999999))
 line_number = 14
 station = 1
 bus1 = Bus(line_number, station, ID)
-bus1.connect_to_server()
-bus1.start_tracking_updates()
+bus1.start()
 
 launch_GUI(bus1)
 
