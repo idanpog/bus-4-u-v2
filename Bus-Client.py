@@ -8,6 +8,7 @@ import tkinter
 from tkinter import *
 from tkinter.ttk import Treeview
 from time import sleep
+import random
 
 class Bus:
     NEW_CONNECTION_PORT=8200
@@ -157,9 +158,9 @@ def launch_GUI(bus):
     update(tree, window, bus)
     window.mainloop()
 
-ID = "bus1"
+ID = str(random.randint(1,999999))
 line_number = 14
-station = 5
+station = 1
 bus1 = Bus(line_number, station, ID)
 bus1.connect_to_server()
 bus1.start_tracking_updates()

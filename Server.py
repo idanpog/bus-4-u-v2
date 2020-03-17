@@ -167,6 +167,7 @@ class BusController:
                         if station.isnumeric():
                             bus.set_station(station)
                             print(f"{bus} has updated his station")
+                            self.__notify_buses_about_buses(int(line_num))
                         else:
                             print(f"{bus} has attempted to update his station but sent an invalid input")
                         break
@@ -191,7 +192,7 @@ class BusController:
 
 
     def __add_bus(self, bus):
-
+        print(f"added bus {bus}")
         if bus.get_line_num() in self.__bus_dict:
             self.__bus_dict[bus.get_line_num()].append(bus)
         else:
@@ -230,6 +231,7 @@ class BusController:
         self.__send_to_all_buses(line_num, data)
 
     def __send_to_all_buses(self, line_num, data):
+        print(f"sending to all buses in line {line_num}, {data}")
         for bus in self.__bus_dict[line_num]:
             try:
                 bus.send_to_bus(data)
@@ -353,7 +355,7 @@ def table(bus_controller):
     headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8","9","10","11", "12"]
     window = Tk()
     window.geometry("700x500")
-    #window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+    window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
     window.title("buses")
     scrollX = Scrollbar(window, orient=HORIZONTAL)
     scrollY = Scrollbar(window, orient=VERTICAL)
