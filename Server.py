@@ -9,7 +9,6 @@ author: Idan Pogrebinsky
 
 
 #TODO: add admin access
-#TODO: add heartbeat
 #TODO: update bus when it joins the system
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
@@ -216,6 +215,8 @@ class BusController:
         self.__send_to_all_buses(line, data)
 
     def __notify_buses_about_buses(self, line_num):
+        if not self.check_line(line_num):
+            return
         data = "buses "
         line_num = int(line_num)
         for bus in self.__bus_dict[line_num]:
