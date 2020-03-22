@@ -136,6 +136,7 @@ class Bus:
         print("hey")
         try:
             self.__connect_to_server()
+            self.asking_user_to_reconnect = False
             return True
         except:
             print("failed to recconect")
@@ -242,8 +243,6 @@ bus1 = Bus(line_number, station, ID)
 bus1.start()
 
 launch_GUI(bus1)
-
-
 
 
 

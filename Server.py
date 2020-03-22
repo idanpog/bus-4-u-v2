@@ -42,6 +42,7 @@ class TelegramController:
         dp.add_handler(CommandHandler("help", self.help))
         dp.add_handler(CommandHandler("history", self.history))
         dp.add_handler(CommandHandler("bus", self.bot_bus))
+        dp.add_handler(CommandHandler("kick", self.kick))
         updater.start_polling()
         # logging.getLogger()
         # updater.idle()
@@ -121,6 +122,11 @@ class TelegramController:
         self.log(update, output)
         update.message.reply_text(output)
 
+    def kick(self, update,  context):
+        #Todo: add admin verification so this command won't be accesable to everyone
+        message = update.message.text.lower().split(" ")
+        if message[1] == "buses":
+            self.bus_controller.kick_all_buses()
 
 class BusController:
 
@@ -143,8 +149,7 @@ class BusController:
         self.__bus_dict = {} #self.__bus_dict[line_num] holds an array that contains all the buses
         self.__stations_dict = {}
 
-    def get_bus_dict(self):
-        return self.__bus_dict
+
 
     def start(self):
         new_bus_receiver =threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
@@ -234,6 +239,12 @@ class BusController:
                 self.remove_bus(bus)
                 self.__notify_buses_about_buses(bus.get_line_num())
 
+    def get_bus_dict(self):
+        return self.__bus_dict
+
+    def kick_all_buses(self):
+        self.__bus_dict = {}
+        print("kicked all buses from the system")
 
     def __heart(self):
         # will be launched in a separate thread and cycle the command pulse for all the buses every 20 seconds
@@ -418,13 +429,19 @@ def table(bus_controller):
     scrollY.place(x=480, height=480)
     scrollX.config(command=tree.xview)
     scrollX.place(x=0, y=480, width=480)
-
+    place_buttons(window, bus_controller)
     for headline in headlines:
         tree.heading(headline, text=headline)
         tree.column(headline, anchor="center", width=35)
 
     update(tree, window, bus_controller)
     window.mainloop()
+
+
+def place_buttons(window, bus_controller):
+    next_button = Button(window, text="kick all buses", command=bus_controller.kick_all_buses, width = 10, height= 2,
+                                 activebackground = "gray")
+    next_button.place(x = 560, y = 400)
 
 
 def update(tree, window, bus_controller):
