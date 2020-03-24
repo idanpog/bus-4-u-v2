@@ -20,27 +20,35 @@ class Bus:
     #HOST = socket.gethostbyname(socket.gethostname())
     HOST = "192.168.3.11" #this client's IP
     ServerIP ="192.168.3.11" # the server's IP
-    def __init__(self, id, line_number, station):
+    def __init__(self, gui, id, line_number, station):
         self.__id, self.__line_number, self.__station  = id, line_number, int(station)
         self.__stations = {}
         # stores
         self.__buses = []
         self.asking_user_to_reconnect = False
+        self.__gui = gui
+        self.stop = False
+
 
 
     def start(self):
-        self.__connect_to_server()
+        try:
+            self.__connect_to_server()
+        except:
+            self.__gui.failed_to_connect()
+
         update_tracking_thread = threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
         update_tracking_thread.start()
         heartbeats_thread = threading.Thread(target=self.__respond_to_heartbeats, args=(), name="heartbeats_thread")
         heartbeats_thread.start()
+
 
     def __respond_to_heartbeats(self):
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         Socket.bind((self.HOST, self.HEART_BEAT_PORT))
         Socket.listen(1)
         Socket.settimeout(4)
-        while True:
+        while not self.stop:
             try:
                 client_socket, addr = Socket.accept()
                 data = client_socket.recv(1024).decode()
@@ -63,7 +71,7 @@ class Bus:
         self.__connected = True
 
     def __track_updates(self):
-        while True:
+        while not self.stop:
             # establish a connection
             Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             Socket.bind((Bus.HOST, Bus.PASSENGERS_PORT))
@@ -143,13 +151,12 @@ class GUI:
         self.__line, self.__id, self.__station = None, None, None
         self.__bus = None
         self.__headlines = None
-        # list(range(1, bus.get_number_of_stations() + 1
         self.config_first_data()
         if self.__line==None:
             sys.exit("Ended by user")
 
     def start(self):
-        self.__bus = Bus(self.__id, self.__line, self.__station)
+        self.__bus = Bus(self, self.__id, self.__line, self.__station)
         self.__bus.start()
         self.__headlines = [str(x) for x in range(1, self.__bus.get_number_of_stations() + 1)]
         self.__window = Tk()
@@ -163,6 +170,8 @@ class GUI:
         self.__place_buttons()
         self.__loop()
         self.__window.mainloop()
+        self.__bus.stop = True
+        sys.exit("closed by user")
 
     def __create_table(self):
         scrollX = Scrollbar(self.__window, orient=HORIZONTAL)
@@ -185,6 +194,7 @@ class GUI:
             self.__bus.asking_user_to_reconnect = True
             self.__display_disconnected()
         self.__window.after(500, self.__loop)
+
     def __update_Table(self):
         self.__tree.config(columns=self.__headlines)
         for headline in self.__headlines:
@@ -223,16 +233,29 @@ class GUI:
                                             text="sadly i've failed to reconnect, try again in a few seconds")
             failed_to_connect_label.place(x=10, y=10)
 
+    def failed_to_connect(self):
+        self.__disconnected_window = Tk()
+        self.__disconnected_window.geometry("250x250")
+        self.__disconnected_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        self.__disconnected_window.title("Error")
+        self.__disconnected_window.resizable(OFF, OFF)
+        main_label = Label(self.__disconnected_window, text="Failed to connect to the server")
+        main_label.place(x=50, y=30)
+        next_button = Button(self.__disconnected_window, text="try to reconnect", command=self.__try_to_reconnect, width=10, height=2,
+                             activebackground="gray")
+        next_button.place(x=160, y=100)
+        self.__disconnected_window.mainloop()
 
-    def place_entry_and_label(self, window, text, position, default_value=""):
+    @staticmethod
+    def place_entry_and_label(window, text, position, default_value=""):
         print(default_value)
         current_entry = Entry(window, width=20)
+        current_entry.insert(END, default_value)
         current_entry.place(x=position[0], y=position[1] + 30)
         current_label = Label(window, text=text)
         current_label.place(x=position[0]+30, y=position[1])
         print(f"placed label :{text}")
         return current_entry
-
 
     def config_first_data(self):
         window = Tk()
@@ -244,18 +267,14 @@ class GUI:
         main_label = Label(window, text="please enter the needed information about the bus")
         main_label.place(x=50, y=30)
 
-        line_entry = self.place_entry_and_label(window, "Line number", (35, 130))
-        id_entry = self.place_entry_and_label(window, "Bus ID", (110, 70))
+        line_entry = self.place_entry_and_label(window, "Line number", (35, 130),default_value="14")
+        id_entry = self.place_entry_and_label(window, "Bus ID", (110, 70),default_value="12345678")
         station_entry = self.place_entry_and_label(window, "station number", (180, 130), default_value="1")
         finish_button = tkinter.Button(window, text="Finish", width=25, height=2, activebackground="gray",
                                        command=lambda: self.set_up_data(id_entry, station_entry, line_entry, window))
 
         finish_button.place(x=70, y=200)
         window.mainloop()
-
-    @staticmethod
-    def destroy_window(self, window):
-        window.destroy()
 
     def set_up_data(self, id_entry, station_entry, line_entry, window):
         try:
