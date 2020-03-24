@@ -9,7 +9,6 @@ author: Idan Pogrebinsky
 
 
 #TODO: add admin access
-#TODO: update bus when it joins the system
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import socket
@@ -250,7 +249,7 @@ class BusController:
         # will be launched in a separate thread and cycle the command pulse for all the buses every 20 seconds
         while True:
             self.__pulse_all()
-            sleep(5)
+            sleep(3)
 
     def __pulse_all(self):
         #will launch a thread for each bus that will use the command indevidual_pulse
