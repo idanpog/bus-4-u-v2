@@ -144,6 +144,14 @@ class Bus:
             print("failed to reconnect")
             return False
 
+    def count_people(self):
+        return sum(self.__stations.values())
+
+    def count_buses(self):
+        total=0
+        for bus in self.__buses:
+            total +=1
+        return total
 
 
 class GUI:
@@ -160,7 +168,7 @@ class GUI:
         self.__bus.start()
         self.__headlines = [str(x) for x in range(1, self.__bus.get_number_of_stations() + 1)]
         self.__window = Tk()
-        self.__window.geometry("472x150")
+        self.__window.geometry("472x250")
         # window.geometry("472x350")
         self.__window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
         self.__window.title("Bus Client")
@@ -170,6 +178,14 @@ class GUI:
         self.__place_buttons()
         self.__loop()
         self.__window.mainloop()
+        #closes the window and stops all the bus threads.
+        try:
+            self.stop()
+        except:
+            pass
+
+    def stop(self):
+        self.__window.destroy()
         self.__bus.stop = True
         sys.exit("closed by user")
 
@@ -187,13 +203,30 @@ class GUI:
                                      width=25, height=2, activebackground="gray")
         self.__next_button.place(x=50, y=100)
 
+        self.__stop_button = tkinter.Button(self.__window, text="exit", command=self.stop,
+                                            width=10, height=2, activebackground="gray", fg = "red")
+        self.__stop_button.place(x=380, y=100)
+
     def __loop(self):
         self.__headlines = [str(x) for x in range(1, self.__bus.get_number_of_stations() + 1)]
         self.__update_Table()
+        self.__update_labels()
         if not self.__bus.is_connected() and not self.__bus.asking_user_to_reconnect:
             self.__bus.asking_user_to_reconnect = True
             self.__display_disconnected()
         self.__window.after(500, self.__loop)
+
+    def __update_labels(self):
+        #statistics labels
+        passengers_label = Label(self.__window, text="Number of people waiting: " + str(self.__bus.count_people()))
+        passengers_label.place(x=10, y=170)
+        buses_label = Label(self.__window, text="Number of buses working for the same line: " + str(self.__bus.count_buses()))
+        buses_label.place(x=10, y=200)
+        #labels about myself
+        line_label = Label(self.__window, text="my line: " + str(self.__line), fg ="gray")
+        line_label.place(x=370, y=170)
+        id_label = Label(self.__window, text="my ID: " + str(self.__id), fg ="gray")
+        id_label.place(x=370, y=200)
 
     def __update_Table(self):
         self.__tree.config(columns=self.__headlines)
@@ -217,34 +250,40 @@ class GUI:
         self.__disconnected_window.resizable(OFF, OFF)
         self.__disconnected_window["bg"] = "red"
         self.__oops_label = Label(self.__disconnected_window, text="oops, looks like we've lose connection.\n"
-                                                                   "hit the button to try to fix it")
-        self.__oops_label.place(x=50, y=30)
+                                                                   "hit the button to try to fix it", bg = "red")
+        self.__oops_label.place(x=30, y=30)
         self.__reconnect_button = tkinter.Button(self.__disconnected_window, text="reconnect",
-                                          command=self.__try_to_reconnect,width=30, height=3, activebackground="gray")
+                                          command=lambda: self.__try_to_reconnect("PostLogin"),width=28, height=3, activebackground="gray")
         self.__reconnect_button.place(x=50, y=90)
 
-    def __try_to_reconnect(self):
+    def __try_to_reconnect(self, status):
+        #status = PreLogin\PostLogin
         flag = self.__bus.reconnect()
         print(f"flag = {flag}")
         if flag:
             self.__disconnected_window.destroy()
         else:
             failed_to_connect_label = Label(self.__disconnected_window,
-                                            text="sadly i've failed to reconnect, try again in a few seconds")
-            failed_to_connect_label.place(x=10, y=10)
+                                            text="sadly i've failed to reconnect  \n try again in a few seconds")
+            if status == "PostLogin":
+                failed_to_connect_label.place(x=10, y=10)
+            elif status == "PreLogin":
+                failed_to_connect_label.place(x=43, y=25)
 
     def failed_to_connect(self):
         self.__disconnected_window = Tk()
-        self.__disconnected_window.geometry("250x250")
+        self.__disconnected_window.geometry("250x150")
         self.__disconnected_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
         self.__disconnected_window.title("Error")
         self.__disconnected_window.resizable(OFF, OFF)
         main_label = Label(self.__disconnected_window, text="Failed to connect to the server")
-        main_label.place(x=50, y=30)
-        next_button = Button(self.__disconnected_window, text="try to reconnect", command=self.__try_to_reconnect, width=10, height=2,
-                             activebackground="gray")
-        next_button.place(x=160, y=100)
+        main_label.place(x=40, y=30)
+        next_button = Button(self.__disconnected_window, text="try to reconnect", height=3, width=25
+                             ,activebackground="gray", command=lambda: self.__try_to_reconnect("PreLogin"))
+        next_button.place(x=32, y=90)
         self.__disconnected_window.mainloop()
+        if self.__bus.is_connected() == False:
+            sys.exit("closed by user")
 
     @staticmethod
     def place_entry_and_label(window, text, position, default_value=""):
@@ -268,7 +307,7 @@ class GUI:
         main_label.place(x=50, y=30)
 
         line_entry = self.place_entry_and_label(window, "Line number", (35, 130),default_value="14")
-        id_entry = self.place_entry_and_label(window, "Bus ID", (110, 70),default_value="12345678")
+        id_entry = self.place_entry_and_label(window, "Bus ID", (110, 70),default_value=str(random.randint(1,11111111)))
         station_entry = self.place_entry_and_label(window, "station number", (180, 130), default_value="1")
         finish_button = tkinter.Button(window, text="Finish", width=25, height=2, activebackground="gray",
                                        command=lambda: self.set_up_data(id_entry, station_entry, line_entry, window))

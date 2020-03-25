@@ -42,6 +42,7 @@ class TelegramController:
         dp.add_handler(CommandHandler("history", self.history))
         dp.add_handler(CommandHandler("bus", self.bot_bus))
         dp.add_handler(CommandHandler("kick", self.kick))
+        dp.add_handler(CommandHandler("show", self.show))
         updater.start_polling()
         # logging.getLogger()
         # updater.idle()
@@ -77,6 +78,14 @@ class TelegramController:
         curs.execute("SELECT * FROM history WHERE ID = (?)", (ID,))
         data = curs.fetchall()
         return len(data) >= 1
+
+    def show(self,update, context):
+        message = update.message.text.lower().split(" ")
+        if message[1].lower() == "lines":
+            print("showing lines")
+            output = f"the currently available lines are: {str(self.bus_controller.show_available_lines())}"
+            update.message.reply_text(output)
+        print("replied to user")
 
     def history(self, update, context):
         message = update.message.text.lower().split(" ")
@@ -241,6 +250,10 @@ class BusController:
     def get_bus_dict(self):
         return self.__bus_dict
 
+    def show_available_lines(self):
+        if len(self.__bus_dict) == 0:
+            return "None"
+        return list(self.__bus_dict.keys())
     def kick_all_buses(self):
         self.__bus_dict = {}
         print("kicked all buses from the system")
