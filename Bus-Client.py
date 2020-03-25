@@ -1,7 +1,5 @@
 #by Idan Pogrebinsky
 
-#TODO: when the bus is disconnected make the button red and don't let the user hit next.
-#TODO: add Next button, and leave
 import socket
 import threading
 import tkinter
@@ -9,7 +7,6 @@ from tkinter import *
 from tkinter.ttk import Treeview
 from time import sleep
 import random
-import ctypes  # An included library with Python install.
 
 
 class Bus:
@@ -17,8 +14,8 @@ class Bus:
     STATIONS_PORT=8201
     PASSENGERS_PORT=8202
     HEART_BEAT_PORT=8203
-    #HOST = socket.gethostbyname(socket.gethostname())
-    HOST = "192.168.3.11" #this client's IP
+    HOST = socket.gethostbyname(socket.gethostname())
+    #HOST = "192.168.3.11" #this client's IP
     ServerIP ="192.168.3.11" # the server's IP
     def __init__(self, gui, id, line_number, station):
         self.__id, self.__line_number, self.__station  = id, line_number, int(station)
@@ -185,15 +182,15 @@ class GUI:
         self.__place_buttons()
         self.__loop()
         self.__window.mainloop()
-        #closes the window and stops all the bus threads.
-        try:
-            self.stop()
-        except:
-            pass
+        self.stop()
+
 
     def stop(self):
-        self.__window.destroy()
         self.__bus.stop = True
+        try:
+            self.__window.destroy()
+        except:
+            print("window already closed.")
         sys.exit("closed by user")
 
     def __create_table(self):

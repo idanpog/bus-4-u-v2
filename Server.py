@@ -144,6 +144,7 @@ class BusController:
     PASSENGERS_PORT = 8202
     HEART_BEAT_PORT = 8203
     HOST = socket.gethostbyname(socket.gethostname())
+    PULSE_DELAY=3
     def __init__(self):
         # used to accept and listen for new buses that join the system
         self.__new_bus_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -280,14 +281,16 @@ class BusController:
         while not self.stop:
             self.__pulse_all()
             self.__check_duplicates()
-            sleep(3)
+            sleep(BusController.PULSE_DELAY)
 
     def __pulse_all(self):
         #will launch a thread for each bus that will use the command indevidual_pulse
         if len(self.__bus_dict)==0:
+            print("skipped pulse as there are no buses")
             return
         for line in self.__bus_dict.values():
             for bus in line:
+
                 threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.get_id()}").start()
 
     def __indevidual_pulse(self, bus):
@@ -295,6 +298,7 @@ class BusController:
         # data = "Check"
         # and wait for a response from the bus with his ID
         # if the bus isn't responding, or sent the wrong ID he'll be kicked.
+        print(f"trying to Pulse bus number {bus.get_id()}")
         if not bus.check_up():
             print("bus found inactive")
             self.remove_bus(bus)
@@ -304,12 +308,14 @@ class BusController:
         return int(line) in self.__bus_dict
 
     def remove_bus(self, bus):
-        print(f"removed: {bus}")
         self.__bus_dict[bus.get_line_num()].remove(bus)
+        print(f"removed: {bus}")
         if len(self.__bus_dict[bus.get_line_num()]) == 0:
-            print("removed the whole line")
             del self.__bus_dict[bus.get_line_num()]
-        self.__notify_buses_about_buses(bus.get_line_num())
+            print("removed the whole line")
+        else:
+            self.__notify_buses_about_buses(bus.get_line_num())
+
 
 
 
@@ -425,6 +431,7 @@ class BusController:
             #send a Check notification
             #returs True if everything is valid and false if the bus returned the wrong ID or didn't respond
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(BusController.PULSE_DELAY*0.8)
             output = True
             try:
                 s.connect((self.__address[0], BusController.HEART_BEAT_PORT))
