@@ -144,7 +144,6 @@ class BusController:
     PASSENGERS_PORT = 8202
     HEART_BEAT_PORT = 8203
     HOST = socket.gethostbyname(socket.gethostname())
-
     def __init__(self):
         # used to accept and listen for new buses that join the system
         self.__new_bus_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -155,7 +154,9 @@ class BusController:
 
         self.__ipv4 = (socket.gethostbyname(socket.gethostname()))
         self.__bus_dict = {} #self.__bus_dict[line_num] holds an array that contains all the buses
-        self.__stations_dict = {}
+        self.__stations_dict = {} # self.__stations_dict[line_num][station] holds the amount of people at the station
+                                  # it's a dictionary in a dictionary stracture
+        self.stop = False # used to stop all the threads in the server for proper shutdown
 
 
 
@@ -164,12 +165,13 @@ class BusController:
         new_bus_receiver.start()
         updates_tracker =threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
         updates_tracker.start()
-        threading.Thread(target=self.__heart, args=(), name="Heart beats").start()
+        heart_beat =threading.Thread(target=self.__heart, args=(), name="Heart beats")
+        heart_beat.start()
 
     def __track_updates(self):
         self.__bus_stations_Socket.bind((self.__ipv4, self.__bus_stations_port))
         self.__bus_stations_Socket.listen(1)
-        while True:
+        while not self.stop:
             # establish a connection
             client_socket, addr = self.__bus_stations_Socket.accept()
             data = client_socket.recv(1024)
@@ -177,10 +179,9 @@ class BusController:
             line_num, station, ID = data.decode().split(" ")
             try:
                 for bus in self.__bus_dict[int(line_num)]:
-                    if bus.get_ID() == ID:
+                    if bus.get_id() == ID:
                         if station.isnumeric():
                             bus.set_station(station)
-                            print(f"{bus} has updated his station")
                             self.__notify_buses_about_buses(int(line_num))
                         else:
                             print(f"{bus} has attempted to update his station but sent an invalid input")
@@ -188,12 +189,13 @@ class BusController:
             except:
                 print("an unregistered bus tried to access the system, ignored")
             client_socket.close()
+        self.__bus_stations_Socket.close()
 
     def __new_bus_reciever(self):
         print(f"waiting for buses at {self.__ipv4}:{BusController.NEW_CONNECTION_PORT}")
         self.__new_bus_Socket.bind((self.__ipv4, self.__new_bus_port))
         self.__new_bus_Socket.listen(1)
-        while True:
+        while not self.stop:
             # establish a connection
             client_socket, addr = self.__new_bus_Socket.accept()
             data = client_socket.recv(1024)
@@ -203,6 +205,7 @@ class BusController:
             self.__add_bus(bus)
             client_socket.close()
             self.__notify_buses_about_buses(line_num)
+        self.__new_bus_Socket.close()
 
     def __add_bus(self, bus):
         print(f"added bus {bus}")
@@ -254,14 +257,29 @@ class BusController:
         if len(self.__bus_dict) == 0:
             return "None"
         return list(self.__bus_dict.keys())
+
     def kick_all_buses(self):
         self.__bus_dict = {}
         print("kicked all buses from the system")
 
+    def __check_duplicates(self):
+        buses = []
+        for line in self.__bus_dict.values():
+            for bus in line:
+                buses.append(bus)
+
+        for idx, bus in enumerate(buses):
+            for another_bus in buses[idx+1::]:
+                if bus.get_id()== another_bus.get_id():
+                    print(f"found duplicates, {bus}\n\n {another_bus}")
+                    self.remove_bus(bus)
+                    self.remove_bus(another_bus)
+
     def __heart(self):
         # will be launched in a separate thread and cycle the command pulse for all the buses every 20 seconds
-        while True:
+        while not self.stop:
             self.__pulse_all()
+            self.__check_duplicates()
             sleep(3)
 
     def __pulse_all(self):
@@ -270,7 +288,7 @@ class BusController:
             return
         for line in self.__bus_dict.values():
             for bus in line:
-                threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.get_ID()}").start()
+                threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.get_id()}").start()
 
     def __indevidual_pulse(self, bus):
         # will send the bus a message
@@ -385,7 +403,7 @@ class BusController:
         def get_line_num(self):
             return self.__line_number
 
-        def get_ID(self):
+        def get_id(self):
             return self.__ID
 
         def update_passengers(self, station, passengers):

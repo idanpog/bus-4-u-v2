@@ -29,6 +29,9 @@ class Bus:
         self.__gui = gui
         self.stop = False
 
+    @property
+    def connected(self):
+        return self.__connected
 
 
     def start(self):
@@ -52,14 +55,18 @@ class Bus:
             try:
                 client_socket, addr = Socket.accept()
                 data = client_socket.recv(1024).decode()
-                client_socket.send(str(self.__id).encode())
+                if data == "Check":
+                    client_socket.send(str(self.__id).encode())
+                    print("recieved check")
             except:
-                print("we've lost connection to the server")
-                self.__connected = False
 
+                if self.__connected ==True:
+                    print("lost connection to the server")
+                    self.__connected = False
+                    self.__gui.display_disconnected()
+                else:
+                    print("still don't have connection to the server")
 
-    def is_connected(self):
-        return self.__connected
 
 
     def __connect_to_server(self):
@@ -93,7 +100,7 @@ class Bus:
             Socket.close()
 
     def next_station(self):
-        if self.is_connected():
+        if self.__connected:
             try:
                 data = f"{self.__line_number} {self.__station+1} {self.__id}"
                 self.__send_to_server(data)
@@ -137,7 +144,6 @@ class Bus:
     def reconnect(self):
         try:
             self.__connect_to_server()
-            self.asking_user_to_reconnect = False
             print("reconnected")
             return True
         except:
@@ -160,6 +166,7 @@ class GUI:
         self.__bus = None
         self.__headlines = None
         self.config_first_data()
+        self.asking_to_reconnect = False
         if self.__line==None:
             sys.exit("Ended by user")
 
@@ -211,9 +218,6 @@ class GUI:
         self.__headlines = [str(x) for x in range(1, self.__bus.get_number_of_stations() + 1)]
         self.__update_Table()
         self.__update_labels()
-        if not self.__bus.is_connected() and not self.__bus.asking_user_to_reconnect:
-            self.__bus.asking_user_to_reconnect = True
-            self.__display_disconnected()
         self.__window.after(500, self.__loop)
 
     def __update_labels(self):
@@ -240,11 +244,10 @@ class GUI:
         self.__tree.insert("", END, values=data)
         self.__tree.place(x=0, y=30, width=472, height=50)
 
-    def __display_disconnected(self):
-        self.__bus.needs_to_reconnect = False
+    def display_disconnected(self):
+        # a display that pops when the bus loses connection
         self.__disconnected_window = Tk()
         self.__disconnected_window.geometry("300x150")
-        # window.geometry("472x350")
         self.__disconnected_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
         self.__disconnected_window.title("Disconnected")
         self.__disconnected_window.resizable(OFF, OFF)
@@ -252,16 +255,24 @@ class GUI:
         self.__oops_label = Label(self.__disconnected_window, text="oops, looks like we've lose connection.\n"
                                                                    "hit the button to try to fix it", bg = "red")
         self.__oops_label.place(x=30, y=30)
-        self.__reconnect_button = tkinter.Button(self.__disconnected_window, text="reconnect",
-                                          command=lambda: self.__try_to_reconnect("PostLogin"),width=28, height=3, activebackground="gray")
+        self.__reconnect_button = tkinter.Button(self.__disconnected_window, text="ReConnect",
+                                          command=lambda: self.__try_to_reconnect("PostLogin"), width=28, height=3, activebackground="gray")
         self.__reconnect_button.place(x=50, y=90)
+        self.__disconnected_window.mainloop()
+        if not self.__bus.connected:
+            sys.exit("closed by user")
 
     def __try_to_reconnect(self, status):
+        #the function that the button "reconnect" calls when pressed.
+        # tries to reconnect the bus to the server, notfies the user if failed
+
+
         #status = PreLogin\PostLogin
         flag = self.__bus.reconnect()
         print(f"flag = {flag}")
         if flag:
             self.__disconnected_window.destroy()
+            self.__bus.asking_user_to_reconnect = False
         else:
             failed_to_connect_label = Label(self.__disconnected_window,
                                             text="sadly i've failed to reconnect  \n try again in a few seconds")
@@ -271,6 +282,7 @@ class GUI:
                 failed_to_connect_label.place(x=43, y=25)
 
     def failed_to_connect(self):
+        #a display that pops when the bus fails to establish the first connection
         self.__disconnected_window = Tk()
         self.__disconnected_window.geometry("250x150")
         self.__disconnected_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
@@ -282,7 +294,7 @@ class GUI:
                              ,activebackground="gray", command=lambda: self.__try_to_reconnect("PreLogin"))
         next_button.place(x=32, y=90)
         self.__disconnected_window.mainloop()
-        if self.__bus.is_connected() == False:
+        if not self.__bus.connected:
             sys.exit("closed by user")
 
     @staticmethod
