@@ -30,6 +30,7 @@ class TelegramController:
 
     def __init__(self, token, bus_controller):
         """starts the bot, gets access to the bus_controller and loads the list of bus stations"""
+        self.data_base = DataBaseManager()
         self.__token = token
         self.bus_controller = bus_controller
         self.__updater = None
@@ -80,28 +81,6 @@ class TelegramController:
                                   '/kick\n'
                                   '/help')
 
-    def log(self, update, output):
-        ID = update.message.from_user.id
-        name = update.message.from_user.name
-        input_text = update.message.text
-        header = connect("banlist.db")
-        curs = header.cursor()
-        if not self.__has_history(ID):
-            curs.execute("INSERT INTO history VALUES(?, ?)", (ID, ""))
-
-        curs.execute("SELECT * FROM history WHERE ID = (?)", (ID, ))
-        data = curs.fetchall()[0][1]
-        data += f"input: {input_text}\noutput:{output}\n" + "-"*30 + "\n"
-        curs.execute("UPDATE history SET text = (?) WHERE ID = (?)", (data, ID))
-        header.commit()
-
-    @staticmethod
-    def __has_history(ID):
-        header = connect("banlist.db")
-        curs = header.cursor()
-        curs.execute("SELECT * FROM history WHERE ID = (?)", (ID,))
-        data = curs.fetchall()
-        return len(data) >= 1
 
     def show(self,update, context):
         message = update.message.text.lower().split(" ")
@@ -109,38 +88,26 @@ class TelegramController:
             print("showing lines")
             output = f"the currently available lines are: {str(self.bus_controller.show_available_lines())}"
             update.message.reply_text(output)
-        print("replied to user")
+        else:
+            update.message.reply_text("try /show lines")
 
     def history(self, update, context):
         print("in history")
         message = update.message.text.lower().split(" ")
-        ID = update.message.from_user.id
-        name = update.message.from_user.name
+        user = self.User(update)
         if message[1] == "show":
             print("showing history")
-            if not self.__has_history(ID):
-                output = "you don't have any history"
-                update.message.reply_text(output)
-                self.log(update, output)
-                return
-            header = connect("banlist.db")
-            curs = header.cursor()
-            curs.execute("SELECT * FROM history WHERE ID = (?)", (ID,))
-            data = curs.fetchall()[0][1]
-            update.message.reply_text(data)
+            if not self.data_base.has_history(user):
+                user.send_message("you don't have any history")
+            else:
+                user.send_message(self.data_base.show_history(user))
         if message[1] == "clear":
             print("clearing history")
-            if not self.__has_history(ID):
-                update.message.reply_text("you already don't have history")
-                return
-
-            header = connect("banlist.db")
-            curs = header.cursor()
-            curs.execute("DELETE FROM history WHERE ID = (?)", (ID,))
-            header.commit()
-            output = "clean"
-            update.message.reply_text(output)
-            self.log(update, output)
+            if not self.data_base.has_history(user):
+                user.send_message("your history is already clean")
+            else:
+                self.data_base.clear_history(user)
+                user.send_message("Clean")
 
     def bus(self, update, context):
         """takes care of the user requests
@@ -205,6 +172,7 @@ class TelegramController:
     class User:
 
         def __init__(self, telegram_info):
+
             self.__telegram_info = telegram_info
             self.__stations = []
         def add_station(self, station):
@@ -225,6 +193,47 @@ class TelegramController:
         def name(self):
             return self.__telegram_info.message.from_user.name
 
+
+class DataBaseManager:
+    def __init__(self):
+        self.__path = "banlist.db"
+
+    def has_history(self, user):
+        #returnes true if the user is in the system, looks by the ID
+        header = connect(self.__path)
+        curs = header.cursor()
+        id = user.id
+        curs.execute("SELECT * FROM history WHERE ID = (?)", (id,))
+        data = curs.fetchall()
+        return len(data) >= 1
+
+    def show_history(self, user):
+        header = connect(self.__path)
+        curs = header.cursor()
+        curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
+        data = curs.fetchall()[0][1]
+        return data
+    def clear_history(self, user):
+        header = connect(self.__path)
+        curs = header.cursor()
+        curs.execute("DELETE FROM history WHERE ID = (?)", (user.id,))
+        header.commit()
+
+    def log(self, user, input="None", output="None"):
+        # user  :user - the refenced user.
+        # input :string - the message that the user sent.
+        # output:string - the responce of the server.
+
+        header = connect(self.__path)
+        curs = header.cursor()
+        if not self.has_history(user.id):
+            curs.execute("INSERT INTO history VALUES(?, ?)", (user.id, ""))
+
+        curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
+        data = curs.fetchall()[0][1]
+        data += f"input: {input}\noutput:{output}\n" + "-" * 30 + "\n"
+        curs.execute("UPDATE history SET text = (?) WHERE ID = (?)", (data, user.id))
+        header.commit()
 
 
 class BusController:
