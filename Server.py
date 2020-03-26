@@ -9,6 +9,7 @@ author: Idan Pogrebinsky
 
 
 #TODO: add admin access
+#TODO: measure latency and display it
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import socket
@@ -31,30 +32,45 @@ class TelegramController:
         """starts the bot, gets access to the bus_controller and loads the list of bus stations"""
         self.__token = token
         self.bus_controller = bus_controller
+        self.__updater = None
+        self.__dp = None
 
     def start(self):
         """launch in a thread, from main
         takes care of the telegram inputs, and controls other main functions"""
-        updater = Updater(self.__token, use_context=True)
-        dp = updater.dispatcher
+        self.__updater = Updater(self.__token, use_context=True)
+        self.__dp = self.__updater.dispatcher
         # on different commands - answer in Telegram
-        dp.add_handler(CommandHandler("help", self.help))
-        dp.add_handler(CommandHandler("history", self.history))
-        dp.add_handler(CommandHandler("bus", self.bot_bus))
-        dp.add_handler(CommandHandler("kick", self.kick))
-        dp.add_handler(CommandHandler("show", self.show))
-        updater.start_polling()
+        self.__dp.add_handler(CommandHandler("help", self.help))
+        self.__dp.add_handler(CommandHandler("history", self.history))
+        self.__dp.add_handler(CommandHandler("bus", self.bot_bus))
+        self.__dp.add_handler(CommandHandler("kick", self.kick))
+        self.__dp.add_handler(CommandHandler("show", self.show))
+        self.__updater.start_polling()
         # logging.getLogger()
         # updater.idle()
 
+    def stop(self):
+        #Todo: notify users when the server closed
+        self.__updater.stop()
+        print("stopped the telegram controller")
+
     @staticmethod
     def help(update, context):
+        print("in help")
         message = update.message.text.lower().split(" ")
-        if message[1] == "me":
+        print(message)
+
+        if len(message) > 1 and message[1] == "me":
             update.message.reply_text('if you need help buddy, call 1201 they are good guys and they will help you')
 
         """Send help when the command /help is issued."""
-        update.message.reply_text('/bus {line} {station} \n/history show/clear')
+        print("trying to reply")
+        update.message.reply_text('/bus {line} {station} \n'
+                                  '/history show/clear\n'
+                                  '/show\n'
+                                  '/kick\n'
+                                  '/help')
 
     def log(self, update, output):
         ID = update.message.from_user.id
@@ -88,10 +104,12 @@ class TelegramController:
         print("replied to user")
 
     def history(self, update, context):
+        print("in history")
         message = update.message.text.lower().split(" ")
         ID = update.message.from_user.id
         name = update.message.from_user.name
         if message[1] == "show":
+            print("showing history")
             if not self.__has_history(ID):
                 output = "you don't have any history"
                 update.message.reply_text(output)
@@ -103,9 +121,11 @@ class TelegramController:
             data = curs.fetchall()[0][1]
             update.message.reply_text(data)
         if message[1] == "clear":
-            if not self.has_history(ID):
+            print("clearing history")
+            if not self.__has_history(ID):
                 update.message.reply_text("you already don't have history")
                 return
+
             header = connect("banlist.db")
             curs = header.cursor()
             curs.execute("DELETE FROM history WHERE ID = (?)", (ID,))
@@ -122,9 +142,9 @@ class TelegramController:
         print(f"handling request : {message}")
         line = int(message[1])
         station = int(message[2])
-        output = f"request accepted, the bus is notified"
+        self.bus_controller.notify_buses_about_people(line, station)
         if self.bus_controller.check_line(line):
-            self.bus_controller.notify_buses_about_people(line, station)
+            output = f"request accepted, the bus is notified"
         else:
             output = f"request accepted, but there are no buses available for that line yet"
         self.log(update, output)
@@ -132,9 +152,21 @@ class TelegramController:
 
     def kick(self, update,  context):
         #Todo: add admin verification so this command won't be accesable to everyone
+        #TODO: add option for kick all people
         message = update.message.text.lower().split(" ")
         if message[1] == "buses":
-            self.bus_controller.kick_all_buses()
+            if len(self.bus_controller.bus_dict) ==0:
+                update.message.reply_text("there are already no buses in the system")
+            else:
+                self.bus_controller.kick_all_buses()
+                update.message.reply_text("kicked all buses")
+        elif message[1] == "people":
+            update.message.reply_text("this function is yet to be implemented..\n"
+                                      "soon you'll be able to kick people as well")
+        else:
+            update.message.reply_text("unrecognized command. try /kick buses or /kick people")
+
+
 
 class BusController:
 
@@ -157,9 +189,28 @@ class BusController:
         self.__bus_dict = {} #self.__bus_dict[line_num] holds an array that contains all the buses
         self.__stations_dict = {} # self.__stations_dict[line_num][station] holds the amount of people at the station
                                   # it's a dictionary in a dictionary stracture
-        self.stop = False # used to stop all the threads in the server for proper shutdown
+        self.__stop_threads = False # used to stop all the threads in the server for proper shutdown
 
-
+    @property
+    def bus_dict(self):
+        return self.__bus_dict
+    @property
+    def stations_dict(self):
+        return self.__stations_dict
+    @property
+    def buses_count(self):
+        count = 0
+        for line in self.__bus_dict.values():
+            # for item in buses:
+            count += len(line)
+        return count
+    @property
+    def people_count(self):
+        count = 0
+        for line in self.__stations_dict.values():
+            for station in line.values():
+                count += station
+        return count
 
     def start(self):
         new_bus_receiver =threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
@@ -169,44 +220,55 @@ class BusController:
         heart_beat =threading.Thread(target=self.__heart, args=(), name="Heart beats")
         heart_beat.start()
 
+    def stop(self):
+        self.__stop_threads = True
+        self.__new_bus_Socket.close()
+        self.__bus_stations_Socket.close()
+        print(f"stopped {self}")
+
+
     def __track_updates(self):
         self.__bus_stations_Socket.bind((self.__ipv4, self.__bus_stations_port))
         self.__bus_stations_Socket.listen(1)
-        while not self.stop:
+        while not self.__stop_threads:
             # establish a connection
-            client_socket, addr = self.__bus_stations_Socket.accept()
-            data = client_socket.recv(1024)
-            # data  = {line_number} {station} {ID}
-            line_num, station, ID = data.decode().split(" ")
             try:
-                for bus in self.__bus_dict[int(line_num)]:
-                    if bus.get_id() == ID:
-                        if station.isnumeric():
-                            bus.set_station(station)
-                            self.__notify_buses_about_buses(int(line_num))
-                        else:
-                            print(f"{bus} has attempted to update his station but sent an invalid input")
-                        break
+                client_socket, addr = self.__bus_stations_Socket.accept()
+                data = client_socket.recv(1024)
+                # data  = {line_number} {station} {ID}
+                line_num, station, ID = data.decode().split(" ")
+                try:
+                    for bus in self.__bus_dict[int(line_num)]:
+                        if bus.get_id() == ID:
+                            if station.isnumeric():
+                                bus.set_station(station)
+                                self.__notify_buses_about_buses(int(line_num))
+                            else:
+                                print(f"{bus} has attempted to update his station but sent an invalid input")
+                            break
+                except:
+                    print("an unregistered bus tried to access the system, ignored")
             except:
-                print("an unregistered bus tried to access the system, ignored")
-            client_socket.close()
-        self.__bus_stations_Socket.close()
+                print("closed track_updates")
 
     def __new_bus_reciever(self):
         print(f"waiting for buses at {self.__ipv4}:{BusController.NEW_CONNECTION_PORT}")
         self.__new_bus_Socket.bind((self.__ipv4, self.__new_bus_port))
         self.__new_bus_Socket.listen(1)
-        while not self.stop:
+        while not self.__stop_threads:
             # establish a connection
-            client_socket, addr = self.__new_bus_Socket.accept()
-            data = client_socket.recv(1024)
-            # data  = {line_number} {station} {ID}
-            line_num, station, ID = data.decode().split(" ")
-            bus = self.Bus(addr, line_num, station, ID)
-            self.__add_bus(bus)
-            client_socket.close()
-            self.__notify_buses_about_buses(line_num)
-        self.__new_bus_Socket.close()
+            try:
+                client_socket, addr = self.__new_bus_Socket.accept()
+                data = client_socket.recv(1024)
+                # data  = {line_number} {station} {ID}
+                line_num, station, ID = data.decode().split(" ")
+                bus = self.Bus(addr, line_num, station, ID)
+                self.__add_bus(bus)
+                client_socket.close()
+                self.__notify_buses_about_buses(line_num)
+            except:
+                print("closed the new_bus_reciever thread")
+
 
     def __add_bus(self, bus):
         print(f"added bus {bus}")
@@ -278,10 +340,11 @@ class BusController:
 
     def __heart(self):
         # will be launched in a separate thread and cycle the command pulse for all the buses every 20 seconds
-        while not self.stop:
+        while not self.__stop_threads:
             self.__pulse_all()
             self.__check_duplicates()
             sleep(BusController.PULSE_DELAY)
+        print("stopped the heartbeats")
 
     def __pulse_all(self):
         #will launch a thread for each bus that will use the command indevidual_pulse
@@ -303,7 +366,6 @@ class BusController:
             print("bus found inactive")
             self.remove_bus(bus)
 
-
     def check_line(self, line):
         return int(line) in self.__bus_dict
 
@@ -315,80 +377,6 @@ class BusController:
             print("removed the whole line")
         else:
             self.__notify_buses_about_buses(bus.get_line_num())
-
-
-
-
-
-    """the statiscitcs"""
-
-
-    def countbuses(self):
-        count = 0
-        for line in self.__bus_dict.values():
-            # for item in buses:
-            count += len(line)
-        return count
-
-    def find_table_size(self):
-        if len(self.__bus_dict) == 0:
-            max_y_bus = 0
-        else:
-            max_y_bus = max(self.__bus_dict.keys())
-
-        if len(self.__stations_dict) == 0:
-            max_y_stations = 0
-        else:
-            max_y_stations = max(self.__stations_dict.keys())
-        max_y = max(max_y_bus, max_y_stations)
-
-        max_x_stations = 0
-        for stations in self.__stations_dict.values():
-            max_x_stations = max(max(stations.keys()), max_x_stations)
-        max_x_bus = 0
-
-        for buses in self.__bus_dict.values():
-            if len(buses)!=0:
-                buses.sort(key=lambda bus: bus.get_station())
-                max_x_bus = max(buses[-1].get_station(), max_x_bus)
-        max_x = max(max_x_bus, max_x_stations)
-
-        return max_x, max_y
-
-    def displaybuseslocation(self):
-
-        if len(self.__bus_dict) == 0 and len(self.__stations_dict) == 0:
-            return [[]]
-
-        max_x, max_y = self.find_table_size()
-        bus_Dict = self.__bus_dict
-        data = []
-
-        for i in range(max_y):
-            data.append([" ",])
-            for j in range(max_x):
-                data[i].append(" ")
-
-        for i in range(max_y):
-            #adds the bus numbers
-            data[i][0] = ([f"{i + 1}"])
-
-        for line_bus, buses in bus_Dict.items():
-            for bus in buses:
-                data[line_bus-1][bus.get_station()] = "X"
-
-        for linenumber, stations in self.__stations_dict.items():
-            for station, count in stations.items():
-                data[linenumber-1][station] = f"{count}"
-
-        return data
-
-    def countpeople(self):
-        count = 0
-        for line in self.__stations_dict.values():
-            for station in line.values():
-                count += station
-        return count
 
 
     class Bus:
@@ -452,67 +440,159 @@ class BusController:
             return f"line number: [{self.__line_number}], Current station [{self.__station}] \naddress: {self.__address}"
 
 
-def table(bus_controller):
-    headlines = ["", "1", "2", "3", "4", "5", "6", "7", "8","9","10","11", "12"]
-    window = Tk()
-    window.geometry("700x500")
-    window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
-    window.title("buses")
-    scrollX = Scrollbar(window, orient=HORIZONTAL)
-    scrollY = Scrollbar(window, orient=VERTICAL)
-    window.resizable(OFF, OFF)
-    tree = Treeview(window, show="headings", columns=headlines, yscrollcommand=scrollY.set, xscrollcommand=scrollX.set)
-    scrollY.config(command=tree.yview)
-    scrollY.place(x=480, height=480)
-    scrollX.config(command=tree.xview)
-    scrollX.place(x=0, y=480, width=480)
-    place_buttons(window, bus_controller)
-    for headline in headlines:
-        tree.heading(headline, text=headline)
-        tree.column(headline, anchor="center", width=35)
 
-    update(tree, window, bus_controller)
-    window.mainloop()
+class GUI:
 
+    def __init__(self, bus_controller, telegram_controller):
+        self.__telegram_controller = telegram_controller
+        self.__bus_controller = bus_controller
+        self.__main_window = Tk()
+        self.__main_display_table = None
+        self.__headlines = [" "] + [str(x) for x in range(1, self.find_table_length() + 1)]
 
-def place_buttons(window, bus_controller):
-    next_button = Button(window, text="kick all buses", command=bus_controller.kick_all_buses, width = 10, height= 2,
-                                 activebackground = "gray")
-    next_button.place(x = 560, y = 400)
+    def start(self):
+        self.__main_window.geometry("700x500")
+        self.__main_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        self.__main_window.title("buses")
+        scrollX = Scrollbar(self.__main_window, orient=HORIZONTAL)
+        scrollY = Scrollbar(self.__main_window, orient=VERTICAL)
+        self.__main_window.resizable(OFF, OFF)
+        self.__main_display_table = Treeview(self.__main_window, show="headings", columns=self.__headlines,
+                                             yscrollcommand=scrollY.set, xscrollcommand=scrollX.set)
+        scrollY.config(command=self.__main_display_table.yview)
+        scrollY.place(x=480, height=480)
+        scrollX.config(command=self.__main_display_table.xview)
+        scrollX.place(x=0, y=480, width=480)
+        self.__place_buttons()
+        for headline in self.__headlines:
+            self.__main_display_table.heading(headline, text=headline)
+            self.__main_display_table.column(headline, anchor="center", width=35)
 
-
-def update(tree, window, bus_controller):
-    update_Table(tree, window, bus_controller)
-    update_labels(tree, window, bus_controller)
-    window.after(2000, update, tree, window, bus_controller)
+        self.__update_table_and_labels()
+        self.__main_window.mainloop()
 
 
-def update_Table(tree, window, bus_controller):
+    def stop(self):
+        try:
+            self.__main_window.destroy()
+        except:
+            print("failed to close the main window")
 
-    headlines = ["", ]
-    headlines+=range(1, bus_controller.find_table_size()[0]+1)
-    tree.config(columns=headlines)
-    #tree.config(columns=["1","1","1","1","1","1"])
-    for headline in headlines:
-        tree.heading(headline, text=headline)
-        tree.column(headline, anchor="center", width=35)
+        self.__telegram_controller.stop()
+        self.__bus_controller.stop()
 
-    data = bus_controller.displaybuseslocation()
-    for i in tree.get_children():
-        tree.delete(i)
-    for line in data:
-        tree.insert("", END, values=line)
-    tree.place(x=0, y=0, width=480, height=480)
+        sys.exit("properly closed by user")
+
+    def __kick_passengers(self):
+        #TODO: add kick_passengers def in bus controller that will erase all the users
+        #TODO: add kick_passengers def in the telegram controller that will notify all the users that they have been kicked.
+        pass
 
 
-def update_labels(tree, window, bus_controller):
-    active_lines_label = Label(window, text="Number of active lines: " + str(len(bus_controller.get_bus_dict())))
-    number_of_buses_label = Label(window, text="Number of buses in the system: " + str(bus_controller.countbuses()))
-    number_of_people_lable = Label(window, text="Number of people waiting: " + str(bus_controller.countpeople()))
+    def __update_table_and_labels(self):
+        self.__update_Table()
+        self.__update_labels()
+        self.__main_window.after(2000, self.__update_table_and_labels)
 
-    active_lines_label.place(x=500, y=0)
-    number_of_buses_label.place(x=500, y=30)
-    number_of_people_lable.place(x=500, y=60)
+    def find_table_length(self):
+        max_x_stations = 0
+        for stations in self.__bus_controller.stations_dict.values():
+            max_x_stations = max(max(stations.keys()), max_x_stations)
+        max_x_bus = 0
+
+        for buses in self.__bus_controller.bus_dict.values():
+            if len(buses) != 0:
+                buses.sort(key=lambda bus: bus.get_station())
+                max_x_bus = max(buses[-1].get_station(), max_x_bus)
+        max_x = max(max_x_bus, max_x_stations)
+        return max_x
+
+    def __update_Table(self):
+        # used to refresh the data in the table, it generates the data and then puts it in.
+        headlines = ["", ]
+        headlines += range(1,  + 1)
+        headlines = [" "]+ [str(x) for x in range(1, self.find_table_length() + 1)]
+        self.__main_display_table.config(columns=headlines)
+
+        for headline in headlines:
+            self.__main_display_table.heading(headline, text=headline)
+            self.__main_display_table.column(headline, anchor="center", width=35)
+
+        data = self.__display_buses_location()
+
+        for i in self.__main_display_table.get_children():
+            #deletes all the data in the chart
+            self.__main_display_table.delete(i)
+        for line in data:
+            #inserts new data into the chart, goes line by line
+            self.__main_display_table.insert("", END, values=line)
+
+        self.__main_display_table.place(x=0, y=0, width=480, height=480)
+
+    def __update_labels(self):
+        active_lines_label = Label(self.__main_window, text="Number of active lines: " + str(len(self.__bus_controller.bus_dict)))
+        number_of_buses_label = Label(self.__main_window, text="Number of buses in the system: " + str(self.__bus_controller.buses_count))
+        number_of_people_lable = Label(self.__main_window, text="Number of people waiting: " + str(self.__bus_controller.people_count))
+
+        active_lines_label.place(x=500, y=0)
+        number_of_buses_label.place(x=500, y=30)
+        number_of_people_lable.place(x=500, y=60)
+
+    def __place_buttons(self):
+        self.__kick_buses_button = Button(self.__main_window, text="kick all buses", command=self.__bus_controller.kick_all_buses,
+                             width=11, height=2, fg="navy", activebackground="snow3")
+        self.__kick__all_passengers = Button(self.__main_window, text="stop server", command=self.__kick_passengers,
+                                    width=11, height=2, fg="navy", activebackground="snow3")
+        self.__stop_button = Button(self.__main_window, text="stop server", command=self.stop,
+                                    width=11, height=2, fg="red", background="floral white", activebackground="gray18")
+
+        self.__kick_buses_button.place(x=500, y=400)
+        self.__kick__all_passengers.place(x=595, y=400)
+        self.__stop_button.place(x=595, y=450)
+
+    def __display_buses_location(self):
+
+
+        if len(self.__bus_controller.bus_dict) == 0 and len(self.__bus_controller.stations_dict) == 0:
+            return [[]] #breaks the run if there are no buses
+        data = []
+        empty_list = [] # an empty list that has placeholders for later use
+        for i in range(self.find_table_length()):
+            empty_list.append(" ")
+        if len(self.__bus_controller.stations_dict) != 0:
+            #makes sure that there are people waiting somewhere before we start marking them
+            for line, stations in self.__bus_controller.stations_dict.items():
+                list = [str(line)] +  empty_list
+                # creates the first line that has the placeholders and the line number
+                for station, people_count in stations.items():
+                    list[station] = people_count
+                    #overrides the placeholders with the amount of people waiting at the station
+                data.append(list)
+
+        relevant_lines =[]
+        #just shows all the lines that are already in the list and showing passengers
+        if len(self.__bus_controller.stations_dict) != 0:
+            for list in data:
+                relevant_lines.append(list[0])
+            print(f"relevant lines{relevant_lines}")
+        """buses override passengers when they colide in the same line"""
+        for line, buses in self.__bus_controller.bus_dict.items():
+            #puts an X wherever there's a bus
+            if str(line) in str(relevant_lines):
+                print(f"{line} was found relevant")
+                # if the line is already there it doesn't add another list into data
+                for bus in buses:
+                    data[relevant_lines.index(str(line))][bus.get_station()] = "X"
+            else:
+                # if the line isn't there yet it adds another list that contains a placeholder and an X for each bus
+                list = [str(line)] +  empty_list
+                for bus in buses:
+                    list[bus.get_station()] = "X"
+                data.append(list)
+
+        data = sorted(data, key=lambda list: int(list[0]))
+        #sorts data by the first Value in the list so it would show the lines sorted.
+        return data
 
 
 def main():
@@ -521,10 +601,12 @@ def main():
     myserver = BusController()
     myserver.start()
 
-    """start the Telegram Bot"""
     steve = TelegramController("990223452:AAHrln4bCzwGpkR2w-5pqesPHpuMjGKuJUI", myserver)
     threading.Thread(steve.start(), args=())
-    table(myserver)
+
+    gui = GUI(myserver, steve)
+    gui.start()
+
 
 
 

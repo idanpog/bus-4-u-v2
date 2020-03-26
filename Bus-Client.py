@@ -8,7 +8,7 @@ from tkinter.ttk import Treeview
 from time import sleep
 import random
 
-
+#fix crash -> try to login, fail to login, hit try again and fail, then hit X
 class Bus:
     NEW_CONNECTION_PORT=8200
     STATIONS_PORT=8201
@@ -262,7 +262,6 @@ class GUI:
     def __try_to_reconnect(self, status):
         #the function that the button "reconnect" calls when pressed.
         # tries to reconnect the bus to the server, notfies the user if failed
-
 
         #status = PreLogin\PostLogin
         flag = self.__bus.reconnect()
