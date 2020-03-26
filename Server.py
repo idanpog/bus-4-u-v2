@@ -48,6 +48,9 @@ class TelegramController:
         self.__dp.add_handler(CommandHandler("bus", self.bus))
         self.__dp.add_handler(CommandHandler("kick", self.kick))
         self.__dp.add_handler(CommandHandler("show", self.show))
+        self.__dp.add_handler(CommandHandler("promote", self.promote))
+        self.__dp.add_handler(CommandHandler("demote", self.demote))
+        self.__dp.add_handler(CommandHandler("checkadmin", self.check_admin))
         self.__updater.start_polling()
         # logging.getLogger()
         # updater.idle()
@@ -90,6 +93,43 @@ class TelegramController:
             update.message.reply_text(output)
         else:
             update.message.reply_text("try /show lines")
+    def promote(self, update, context):
+        message = update.message.text.lower().split(" ")
+        user = self.User(update)
+        if message[1] == "me":
+            print(f"promoting {user.name}:{user.id}")
+            if not self.data_base.slow_check_admin(user):
+                self.data_base.promote_admin(user)
+                user.send_message("congratulations sir, you're now an Admin.")
+            else:
+                user.send_message("Cannot promote, you're already an Admin.")
+        elif len(message) == 2:
+            if not self.data_base.slow_check_admin(id = message[1]):
+                self.data_base.promote_admin(id=message[1])
+                user.send_message(f"Promoted user with ID: {message[1]} to Admin role.")
+            else:
+                user.send_message("The user you're trying to Promote is already an admin")
+
+    def demote(self, update, context):
+        message = update.message.text.lower().split(" ")
+        user = self.User(update)
+        if message[1] == "me":
+            print(f"demoting {user.name}:{user.id}")
+            if self.data_base.slow_check_admin(user):
+                self.data_base.demote_admin(user)
+                user.send_message("congratulations sir, you're no longer an Admin.")
+            else:
+                user.send_message("Cannot demote, you're already a regular user.")
+        elif len(message) == 2:
+            if self.data_base.slow_check_admin(id=message[1]):
+                self.data_base.demote_admin(id=message[1])
+                user.send_message(f"demoted user  with ID: {message[1]} from Admin role.")
+            else:
+                user.send_message("The user you're trying to demote isn't an admin.")
+
+    def check_admin(self,update, context):
+        user = self.User(update)
+        user.send_message(self.data_base.slow_check_admin(user))
 
     def history(self, update, context):
         print("in history")
@@ -124,7 +164,6 @@ class TelegramController:
         self.log(update, output)
         self.__add_to_users_dict(update)
         update.message.reply_text(output)
-
 
     def kick(self, update,  context):
         #Todo: add admin verification so this command won't be accesable to everyone
@@ -170,7 +209,6 @@ class TelegramController:
             return self.__station_number
 
     class User:
-
         def __init__(self, telegram_info):
 
             self.__telegram_info = telegram_info
@@ -197,16 +235,15 @@ class TelegramController:
 class DataBaseManager:
     def __init__(self):
         self.__path = "banlist.db"
+        self.__admins = []
 
     def has_history(self, user):
         #returnes true if the user is in the system, looks by the ID
         header = connect(self.__path)
         curs = header.cursor()
-        id = user.id
-        curs.execute("SELECT * FROM history WHERE ID = (?)", (id,))
+        curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
         data = curs.fetchall()
         return len(data) >= 1
-
     def show_history(self, user):
         header = connect(self.__path)
         curs = header.cursor()
@@ -234,6 +271,49 @@ class DataBaseManager:
         data += f"input: {input}\noutput:{output}\n" + "-" * 30 + "\n"
         curs.execute("UPDATE history SET text = (?) WHERE ID = (?)", (data, user.id))
         header.commit()
+
+    def __update_admin_cache(self):
+        header = connect(self.__path)
+        curs = header.cursor()
+        curs.execute("SELECT * FROM admins WHERE ID IS NOT NULL")
+        data = curs.fetchall()
+        for item in data:
+            item = item[0]
+        print(data)
+        self.__admins = data
+
+    def slow_check_admin(self, user = None, id = None):
+        if id == None:
+            id = user.id
+        header = connect(self.__path)
+        curs = header.cursor()
+        curs.execute("SELECT * FROM admins WHERE ID = (?)", (id,))
+        data = curs.fetchall()
+        return len(data) >= 1
+
+    def fast_check_admin(self, user):
+        return user.id in self.__admins
+
+    def promote_admin(self, user=None, id=None):
+        if id == None:
+            id = user.id
+        if not self.slow_check_admin(id =id):
+            header = connect(self.__path)
+            curs = header.cursor()
+            curs.execute("INSERT INTO admins(ID) VALUES(?)", (id,))
+            header.commit()
+            self.__update_admin_cache()
+
+    def demote_admin(self, user = None, id = None):
+        if id == None:
+            id = user.id
+        if self.slow_check_admin(id = id):
+            header = connect(self.__path)
+            curs = header.cursor()
+            curs.execute("DELETE FROM admins WHERE ID = (?)", (id,))
+            header.commit()
+            self.__update_admin_cache()
+
 
 
 class BusController:

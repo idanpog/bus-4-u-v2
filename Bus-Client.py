@@ -64,8 +64,6 @@ class Bus:
                 else:
                     print("still don't have connection to the server")
 
-
-
     def __connect_to_server(self):
         data = f"{self.__line_number} {self.__station} {self.__id}"
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
