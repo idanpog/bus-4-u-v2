@@ -34,6 +34,7 @@ class TelegramController:
         self.bus_controller = bus_controller
         self.__updater = None
         self.__dp = None
+        self.__users = dict() #dictonary {ID: User}
 
     def start(self):
         """launch in a thread, from main
@@ -43,7 +44,7 @@ class TelegramController:
         # on different commands - answer in Telegram
         self.__dp.add_handler(CommandHandler("help", self.help))
         self.__dp.add_handler(CommandHandler("history", self.history))
-        self.__dp.add_handler(CommandHandler("bus", self.bot_bus))
+        self.__dp.add_handler(CommandHandler("bus", self.bus))
         self.__dp.add_handler(CommandHandler("kick", self.kick))
         self.__dp.add_handler(CommandHandler("show", self.show))
         self.__updater.start_polling()
@@ -52,6 +53,13 @@ class TelegramController:
 
     def stop(self):
         #Todo: notify users when the server closed
+        for user in self.__users.values():
+            text = f"Hello {user.name.split(' ')[0]}\n" \
+                   f"The server is shutting down, your request will be removed\n" \
+                   f"Bus4U service wishes you the best"
+            user.send_message(text)
+            self.log(user.telegram_info, text)
+
         self.__updater.stop()
         print("stopped the telegram controller")
 
@@ -134,12 +142,11 @@ class TelegramController:
             update.message.reply_text(output)
             self.log(update, output)
 
-    def bot_bus(self, update, context):
+    def bus(self, update, context):
         """takes care of the user requests
         /bus {line} {station}
         adds the request into the system, sends a message to the bus and logs the request in the logs"""
         message = update.message.text.lower().split(" ")
-        print(f"handling request : {message}")
         line = int(message[1])
         station = int(message[2])
         self.bus_controller.notify_buses_about_people(line, station)
@@ -148,7 +155,9 @@ class TelegramController:
         else:
             output = f"request accepted, but there are no buses available for that line yet"
         self.log(update, output)
+        self.__add_to_users_dict(update)
         update.message.reply_text(output)
+
 
     def kick(self, update,  context):
         #Todo: add admin verification so this command won't be accesable to everyone
@@ -165,6 +174,56 @@ class TelegramController:
                                       "soon you'll be able to kick people as well")
         else:
             update.message.reply_text("unrecognized command. try /kick buses or /kick people")
+
+    def __add_to_users_dict(self, update):
+        message = update.message.text.lower().split(" ")
+        line_num = int(message[1])
+        station_num = int(message[2])
+
+        station = self.Station(line_num, station_num)
+        user = self.User(update)
+        user.add_station(station)
+        if user.id in self.__users.keys():
+            print("user already documented, so im not adding him but only the station.")
+            self.__users[user.id].add_station(station)
+        else:
+            print("added user")
+            self.__users[user.id] = user
+        print("done documenting user.")
+
+    class Station:
+        def __init__(self, line_number, station_number):
+            self.__line_number = line_number
+            self.__station_number = station_number
+        @property
+        def line_number(self):
+            return self.__line_number
+        @property
+        def station_number(self):
+            return self.__station_number
+
+    class User:
+
+        def __init__(self, telegram_info):
+            self.__telegram_info = telegram_info
+            self.__stations = []
+        def add_station(self, station):
+            self.__stations.append(station)
+        def send_message(self, text):
+            print(f"sent message to {self.name}, '{text}'")
+            self.__telegram_info.message.reply_text(text)
+        @property
+        def stations(self):
+            return self.__stations
+        @property
+        def telegram_info(self):
+            return self.__telegram_info
+        @property
+        def id(self):
+            return self.__telegram_info.message.from_user.id
+        @property
+        def name(self):
+            return self.__telegram_info.message.from_user.name
 
 
 
@@ -353,7 +412,6 @@ class BusController:
             return
         for line in self.__bus_dict.values():
             for bus in line:
-
                 threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.get_id()}").start()
 
     def __indevidual_pulse(self, bus):
