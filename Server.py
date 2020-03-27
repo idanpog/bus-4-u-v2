@@ -43,6 +43,17 @@ class TelegramController:
         update_tracking_thread = threading.Thread(target=self.__luanch_handlers, args=(), name="Telegram Controller thread")
         update_tracking_thread.start()
 
+    def stop(self):
+        for user in self.__users.values():
+            text = f"Hello {user.name.split(' ')[0]}\n" \
+                   f"The server is shutting down, your request will be removed\n" \
+                   f"Bus4U service wishes you the best"
+
+            self.data_base.log(user, "None", text)
+            user.send_message(text)
+        self.__updater.stop()
+        print("stopped the telegram controller")
+
     def __luanch_handlers(self):
         """launch in a thread, from main
         takes care of the telegram inputs, and controls other main functions"""
@@ -61,48 +72,51 @@ class TelegramController:
         self.__updater.start_polling()
         # logging.getLogger()
         # updater.idle()
-    def stop_all(self, update, context):
 
+    #handlers
+    def stop_all(self, update, context):
         user = self.User(update)
         if not self.data_base.check_admin(user):  # allow access only to admins.
             output = "you cannot access this command, must be an admin"
             self.data_base.log(user, update.message.text, output)
             user.send_message(output)
             return
-
-        user.send_message("Stopping server.")
-        print("stopping by remote request from the Telegram admins.")
-        self.__gui.remote_stop =True #has to be done this way so the threads don't interfer with tkinter.
-
-
-    def stop(self):
-        for user in self.__users.values():
-            text = f"Hello {user.name.split(' ')[0]}\n" \
-                   f"The server is shutting down, your request will be removed\n" \
-                   f"Bus4U service wishes you the best"
-
-            self.data_base.log(user,"None" ,text)
-            user.send_message(text)
-        self.__updater.stop()
-        print("stopped the telegram controller")
+        message = update.message.text.lower().split(" ")
+        if len(message)!=2:
+            output = "you must type the full command to stop the server\n" \
+                     "try /stop server\n" \
+                     "USE ONLY IF YOU MUST"
+        elif update.message.text.split(" ")[1]!="server":
+            output = "You typed the wrong command.\n" \
+                     "If you are sure that you want to stop the server type /stop server\n" \
+                     "USE ONLY IF YOU MUST"
+        else:
+            output = "Stopping server."
+            print("stopping by remote request from the Telegram admins.")
+            self.__gui.remote_stop =True #has to be done this way so the threads don't interfer with tkinter.
+        self.data_base.log(user, update.message.text, output)
+        user.send_message(output)
 
     def help(self, update, context):
         message = update.message.text.lower().split(" ")
+        user = self.User(update)
         if len(message) > 1 and message[1] == "me":
-            update.message.reply_text('if you need help buddy, call 1201 they are good guys and they will help you')
+            output = 'if you need help buddy, call 1201 they are good guys and they will help you'
+        else:
+            """Send help when the command /help is issued."""
+            output = '/bus {line} {station} \n' \
+                                      '/history show/clear\n' \
+                                      '/show lines\n' \
+                                      '/help'
 
-        """Send help when the command /help is issued."""
-        print("trying to reply")
-        output = '/bus {line} {station} \n' \
-                                  '/history show/clear\n' \
-                                  '/show lines\n' \
-                                  '/kick\n' \
-                                  '/help' \
-                 '/promote {me/id}' \
-                 '/demote {me/id}' \
-                 '/stop'
+            if self.data_base.check_admin(user):
+                output += '\n--admin commands --\n' \
+                         '/kick\n' \
+                     '/promote {me/id}\n' \
+                     '/demote {me/id}\n' \
+                     '/stop'
         update.message.reply_text(output)
-        self.data_base.log(self.User(update), update.message.text, output)
+        self.data_base.log(user, update.message.text, output)
 
     def show(self,update, context):
         message = update.message.text.lower().split(" ")
@@ -152,46 +166,59 @@ class TelegramController:
             else:
                 user.send_message("The user you're trying to demote isn't an admin.")
 
-    def check_admin(self,update, context):
+    def check_admin(self, update, context):
         user = self.User(update)
-        user.send_message(self.data_base.check_admin(user))
+        output = self.data_base.check_admin(user)
+        user.send_message(output)
+        self.data_base.log(user, update.message.text, output)
 
     def history(self, update, context):
-        print("in history")
         message = update.message.text.lower().split(" ")
         user = self.User(update)
         if message[1] == "show":
-            print("showing history")
             if not self.data_base.has_history(user):
-                user.send_message("you don't have any history")
+                output = "you don't have any history"
             else:
-                user.send_message(self.data_base.show_history(user))
+                output = self.data_base.show_history(user)
         if message[1] == "clear":
-            print("clearing history")
             if not self.data_base.has_history(user):
-                user.send_message("your history is already clean")
+                output = "your history is already clean"
             else:
                 self.data_base.clear_history(user)
-                user.send_message("Clean")
+                output = "Clean"
+        update.message.reply_text(output)
+        self.data_base.log(user, update.message.text, output)
+
 
     def bus(self, update, context):
         """takes care of the user requests
         /bus {line} {station}
         adds the request into the system, sends a message to the bus and logs the request in the logs"""
+        user = self.User(update)
         message = update.message.text.lower().split(" ")
-        line = int(message[1])
-        station = int(message[2])
-        self.bus_controller.notify_buses_about_people(line, station)
-        if self.bus_controller.check_line(line):
-            output = f"request accepted, the bus is notified"
+        if len(message)!=3:
+            output = "looks like you have a little mistake in the command\n" \
+                     "try /bus {bus number} {station number}" \
+                     "for example /bus 14 3"
         else:
-            output = f"request accepted, but there are no buses available for that line yet"
-        self.data_base.log(self.User(update),update.message, output)
-        self.__add_to_users_dict(update)
+            try:
+                line = int(message[1])
+                station = int(message[2])
+
+                self.bus_controller.notify_buses_about_people(line, station)
+                if self.bus_controller.check_line(line):
+                    output = f"request accepted, the bus is notified"
+                else:
+                    output = f"request accepted, but there are no buses available for that line yet"
+                self.__add_to_users_dict(update)
+            except:
+                output = "both of the values you give must be number in order to work" \
+                         "for example, /bus 14 3"
+
+        self.data_base.log(user, update.message.text, output)
         update.message.reply_text(output)
 
     def kick(self, update,  context): # admin command
-        #TODO: add option for kick all people
         user = self.User(update)
 
         if not self.data_base.check_admin(user): #allow access only to admins.
@@ -199,19 +226,34 @@ class TelegramController:
             self.data_base.log(user, update.message.text, output)
             user.send_message(output)
             return
-
         message = update.message.text.lower().split(" ")
         if message[1] == "buses":
             if len(self.bus_controller.bus_dict) ==0:
-                update.message.reply_text("there are already no buses in the system")
+                output = "there are already no buses in the system"
             else:
                 self.bus_controller.kick_all_buses()
-                update.message.reply_text("kicked all buses")
+                output = "kicked all buses"
         elif message[1] == "people":
-            update.message.reply_text("this function is yet to be implemented..\n"
-                                      "soon you'll be able to kick people as well")
+            self.kick_all_passengers("kicked all users by an admin")
+            output = "successfully kicked all the passengers"
         else:
-            update.message.reply_text("unrecognized command. try /kick buses or /kick people")
+            output ="unrecognized command. try /kick buses or /kick people"
+        self.data_base.log(user, update.message.text, output)
+        user.send_message(output)
+
+    def kick_all_passengers(self, reason):
+        for user in self.__users.values():
+            user.send_message(f"hello {user.name.split(' ')[0]}, it looks like you've been kicked out of the system for: {reason}")
+        self.__users = {}
+        self.bus_controller.kick_all_passengers()
+
+    def __kick_passenger(self, user, reason):
+        try:
+            user.send_message(f"hello {user.name.split(' ' )[0]}, it looks like you've been kicked out of the system for: {reason}")
+            del self.__users[user.id]
+        except Error as e:
+            print(e)
+            print("the person you're trying to delete doesn't exist.")
 
     def __add_to_users_dict(self, update):
         message = update.message.text.lower().split(" ")
@@ -222,12 +264,10 @@ class TelegramController:
         user = self.User(update)
         user.add_station(station)
         if user.id in self.__users.keys():
-            print("user already documented, so im not adding him but only the station.")
             self.__users[user.id].add_station(station)
         else:
             print("added user")
             self.__users[user.id] = user
-        print("done documenting user.")
 
     class Station:
         def __init__(self, line_number, station_number):
@@ -291,7 +331,7 @@ class DataBaseManager:
         curs.execute("DELETE FROM history WHERE ID = (?)", (user.id,))
         header.commit()
 
-    def log(self, user, input="None", output="None"):
+    def log(self, user: TelegramController.User, input: str = "None", output: str = "None") -> NONE:
         # user  :user - the refenced user.
         # input :string - the message that the user sent.
         # output:string - the responce of the server.
@@ -299,6 +339,11 @@ class DataBaseManager:
         curs = header.cursor()
         if not self.has_history(user):
             curs.execute("INSERT INTO history VALUES(?, ?)", (user.id, ""))
+            user.send_message("Greetings, we're happy that you decided to join and use the Bus4U service!\n"
+                              "in order to see all the possible commands you can type /help\n"
+                              "Also we want you to know that every command that you type and the server response will"
+                              "be logged and you can access your history with /history.\n\n"
+                              "we hope you'll enjoy the product and wish you the best.")
 
         curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
         data = curs.fetchall()[0][1]
@@ -314,8 +359,6 @@ class DataBaseManager:
         newlist = []
         for item in data:
             newlist.append(item[0])
-        print(newlist)
-        print(f"updated new adminlist and now it looks like {newlist}")
         self.__admins = newlist
 
     def check_admin(self, user = None, id = None):
@@ -403,7 +446,6 @@ class BusController:
         self.__new_bus_Socket.close()
         self.__bus_stations_Socket.close()
         print(f"stopped {self}")
-
 
     def __track_updates(self):
         self.__bus_stations_Socket.bind((self.__ipv4, self.__bus_stations_port))
@@ -502,6 +544,10 @@ class BusController:
     def kick_all_buses(self):
         self.__bus_dict = {}
         print("kicked all buses from the system")
+
+    def kick_all_passengers(self):
+        self.__stations_dict = {}
+        print("kicked all passengers from the system")
 
     def __check_duplicates(self):
         buses = []
@@ -661,9 +707,8 @@ class GUI:
         sys.exit(f"properly closed by {reason}")
 
     def __kick_passengers(self):
-        #TODO: add kick_passengers def in bus controller that will erase all the users
-        #TODO: add kick_passengers def in the telegram controller that will notify all the users that they have been kicked.
-        pass
+        print("in gui.__kick_passengers")
+        self.__telegram_controller.kick_all_passengers("kicked all passengers by an admin")
 
     def __update_table_and_labels(self):
         self.__update_Table()
