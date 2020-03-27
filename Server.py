@@ -35,9 +35,15 @@ class TelegramController:
         self.bus_controller = bus_controller
         self.__updater = None
         self.__dp = None
-        self.__users = dict() #dictonary {ID: User}
+        self.__users = dict() #dictonary {id: user} (str: User)
+        self.__gui = None
 
-    def start(self):
+    def start(self, gui):
+        self.__gui = gui
+        update_tracking_thread = threading.Thread(target=self.__luanch_handlers, args=(), name="Telegram Controller thread")
+        update_tracking_thread.start()
+
+    def __luanch_handlers(self):
         """launch in a thread, from main
         takes care of the telegram inputs, and controls other main functions"""
         self.__updater = Updater(self.__token, use_context=True)
@@ -46,44 +52,57 @@ class TelegramController:
         self.__dp.add_handler(CommandHandler("help", self.help))
         self.__dp.add_handler(CommandHandler("history", self.history))
         self.__dp.add_handler(CommandHandler("bus", self.bus))
-        self.__dp.add_handler(CommandHandler("kick", self.kick))
         self.__dp.add_handler(CommandHandler("show", self.show))
         self.__dp.add_handler(CommandHandler("promote", self.promote))
         self.__dp.add_handler(CommandHandler("demote", self.demote))
         self.__dp.add_handler(CommandHandler("checkadmin", self.check_admin))
+        self.__dp.add_handler(CommandHandler("kick", self.kick))
+        self.__dp.add_handler(CommandHandler("stop", self.stop_all))
         self.__updater.start_polling()
         # logging.getLogger()
         # updater.idle()
+    def stop_all(self, update, context):
+
+        user = self.User(update)
+        if not self.data_base.check_admin(user):  # allow access only to admins.
+            output = "you cannot access this command, must be an admin"
+            self.data_base.log(user, update.message.text, output)
+            user.send_message(output)
+            return
+
+        user.send_message("Stopping server.")
+        print("stopping by remote request from the Telegram admins.")
+        self.__gui.remote_stop =True #has to be done this way so the threads don't interfer with tkinter.
+
 
     def stop(self):
-        #Todo: notify users when the server closed
         for user in self.__users.values():
             text = f"Hello {user.name.split(' ')[0]}\n" \
                    f"The server is shutting down, your request will be removed\n" \
                    f"Bus4U service wishes you the best"
-            user.send_message(text)
-            self.log(user.telegram_info, text)
 
+            self.data_base.log(user,"None" ,text)
+            user.send_message(text)
         self.__updater.stop()
         print("stopped the telegram controller")
 
-    @staticmethod
-    def help(update, context):
-        print("in help")
+    def help(self, update, context):
         message = update.message.text.lower().split(" ")
-        print(message)
-
         if len(message) > 1 and message[1] == "me":
             update.message.reply_text('if you need help buddy, call 1201 they are good guys and they will help you')
 
         """Send help when the command /help is issued."""
         print("trying to reply")
-        update.message.reply_text('/bus {line} {station} \n'
-                                  '/history show/clear\n'
-                                  '/show\n'
-                                  '/kick\n'
-                                  '/help')
-
+        output = '/bus {line} {station} \n' \
+                                  '/history show/clear\n' \
+                                  '/show lines\n' \
+                                  '/kick\n' \
+                                  '/help' \
+                 '/promote {me/id}' \
+                 '/demote {me/id}' \
+                 '/stop'
+        update.message.reply_text(output)
+        self.data_base.log(self.User(update), update.message.text, output)
 
     def show(self,update, context):
         message = update.message.text.lower().split(" ")
@@ -93,35 +112,41 @@ class TelegramController:
             update.message.reply_text(output)
         else:
             update.message.reply_text("try /show lines")
+
     def promote(self, update, context):
+        print("in promote")
         message = update.message.text.lower().split(" ")
         user = self.User(update)
+        output = "error"
         if message[1] == "me":
             print(f"promoting {user.name}:{user.id}")
-            if not self.data_base.slow_check_admin(user):
+            if not self.data_base.check_admin(user):
                 self.data_base.promote_admin(user)
-                user.send_message("congratulations sir, you're now an Admin.")
+                output = "congratulations sir, you're now an Admin."
             else:
-                user.send_message("Cannot promote, you're already an Admin.")
+                output = "Cannot promote, you're already an Admin."
         elif len(message) == 2:
-            if not self.data_base.slow_check_admin(id = message[1]):
+            if not self.data_base.check_admin(id = message[1]):
                 self.data_base.promote_admin(id=message[1])
-                user.send_message(f"Promoted user with ID: {message[1]} to Admin role.")
+                output = f"Promoted user with ID: {message[1]} to Admin role."
             else:
-                user.send_message("The user you're trying to Promote is already an admin")
+                output = "The user you're trying to Promote is already an admin"
+        self.data_base.log(user, update.message.text, output)
+
+        user.send_message(output)
 
     def demote(self, update, context):
         message = update.message.text.lower().split(" ")
         user = self.User(update)
         if message[1] == "me":
             print(f"demoting {user.name}:{user.id}")
-            if self.data_base.slow_check_admin(user):
+            if self.data_base.check_admin(user):
                 self.data_base.demote_admin(user)
                 user.send_message("congratulations sir, you're no longer an Admin.")
             else:
                 user.send_message("Cannot demote, you're already a regular user.")
         elif len(message) == 2:
-            if self.data_base.slow_check_admin(id=message[1]):
+            if self.data_base.check_admin(id=message[1]):
                 self.data_base.demote_admin(id=message[1])
                 user.send_message(f"demoted user  with ID: {message[1]} from Admin role.")
             else:
@@ -129,7 +154,7 @@ class TelegramController:
 
     def check_admin(self,update, context):
         user = self.User(update)
-        user.send_message(self.data_base.slow_check_admin(user))
+        user.send_message(self.data_base.check_admin(user))
 
     def history(self, update, context):
         print("in history")
@@ -161,13 +186,20 @@ class TelegramController:
             output = f"request accepted, the bus is notified"
         else:
             output = f"request accepted, but there are no buses available for that line yet"
-        self.log(update, output)
+        self.data_base.log(self.User(update),update.message, output)
         self.__add_to_users_dict(update)
         update.message.reply_text(output)
 
-    def kick(self, update,  context):
-        #Todo: add admin verification so this command won't be accesable to everyone
+    def kick(self, update,  context): # admin command
         #TODO: add option for kick all people
+        user = self.User(update)
+
+        if not self.data_base.check_admin(user): #allow access only to admins.
+            output = "you cannot access this command, must be an admin"
+            self.data_base.log(user, update.message.text, output)
+            user.send_message(output)
+            return
+
         message = update.message.text.lower().split(" ")
         if message[1] == "buses":
             if len(self.bus_controller.bus_dict) ==0:
@@ -236,6 +268,7 @@ class DataBaseManager:
     def __init__(self):
         self.__path = "banlist.db"
         self.__admins = []
+        self.__update_admin_cache()
 
     def has_history(self, user):
         #returnes true if the user is in the system, looks by the ID
@@ -244,12 +277,14 @@ class DataBaseManager:
         curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
         data = curs.fetchall()
         return len(data) >= 1
+
     def show_history(self, user):
         header = connect(self.__path)
         curs = header.cursor()
         curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
         data = curs.fetchall()[0][1]
         return data
+
     def clear_history(self, user):
         header = connect(self.__path)
         curs = header.cursor()
@@ -260,10 +295,9 @@ class DataBaseManager:
         # user  :user - the refenced user.
         # input :string - the message that the user sent.
         # output:string - the responce of the server.
-
         header = connect(self.__path)
         curs = header.cursor()
-        if not self.has_history(user.id):
+        if not self.has_history(user):
             curs.execute("INSERT INTO history VALUES(?, ?)", (user.id, ""))
 
         curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
@@ -277,27 +311,22 @@ class DataBaseManager:
         curs = header.cursor()
         curs.execute("SELECT * FROM admins WHERE ID IS NOT NULL")
         data = curs.fetchall()
+        newlist = []
         for item in data:
-            item = item[0]
-        print(data)
-        self.__admins = data
+            newlist.append(item[0])
+        print(newlist)
+        print(f"updated new adminlist and now it looks like {newlist}")
+        self.__admins = newlist
 
-    def slow_check_admin(self, user = None, id = None):
+    def check_admin(self, user = None, id = None):
         if id == None:
             id = user.id
-        header = connect(self.__path)
-        curs = header.cursor()
-        curs.execute("SELECT * FROM admins WHERE ID = (?)", (id,))
-        data = curs.fetchall()
-        return len(data) >= 1
-
-    def fast_check_admin(self, user):
-        return user.id in self.__admins
+        return str(id) in self.__admins
 
     def promote_admin(self, user=None, id=None):
         if id == None:
             id = user.id
-        if not self.slow_check_admin(id =id):
+        if not self.check_admin(id =id):
             header = connect(self.__path)
             curs = header.cursor()
             curs.execute("INSERT INTO admins(ID) VALUES(?)", (id,))
@@ -307,12 +336,13 @@ class DataBaseManager:
     def demote_admin(self, user = None, id = None):
         if id == None:
             id = user.id
-        if self.slow_check_admin(id = id):
+        if self.check_admin(id = id):
             header = connect(self.__path)
             curs = header.cursor()
             curs.execute("DELETE FROM admins WHERE ID = (?)", (id,))
             header.commit()
             self.__update_admin_cache()
+
 
 
 
@@ -497,7 +527,6 @@ class BusController:
     def __pulse_all(self):
         #will launch a thread for each bus that will use the command indevidual_pulse
         if len(self.__bus_dict)==0:
-            print("skipped pulse as there are no buses")
             return
         for line in self.__bus_dict.values():
             for bus in line:
@@ -508,7 +537,6 @@ class BusController:
         # data = "Check"
         # and wait for a response from the bus with his ID
         # if the bus isn't responding, or sent the wrong ID he'll be kicked.
-        print(f"trying to Pulse bus number {bus.get_id()}")
         if not bus.check_up():
             print("bus found inactive")
             self.remove_bus(bus)
@@ -595,6 +623,7 @@ class GUI:
         self.__bus_controller = bus_controller
         self.__main_window = Tk()
         self.__main_display_table = None
+        self.remote_stop = False
         self.__headlines = [" "] + [str(x) for x in range(1, self.find_table_length() + 1)]
 
     def start(self):
@@ -618,8 +647,8 @@ class GUI:
         self.__update_table_and_labels()
         self.__main_window.mainloop()
 
-
-    def stop(self):
+    def __stop(self, reason = "user"):
+        print(f"trying to close because {reason}")
         try:
             self.__main_window.destroy()
         except:
@@ -628,17 +657,19 @@ class GUI:
         self.__telegram_controller.stop()
         self.__bus_controller.stop()
 
-        sys.exit("properly closed by user")
+
+        sys.exit(f"properly closed by {reason}")
 
     def __kick_passengers(self):
         #TODO: add kick_passengers def in bus controller that will erase all the users
         #TODO: add kick_passengers def in the telegram controller that will notify all the users that they have been kicked.
         pass
 
-
     def __update_table_and_labels(self):
         self.__update_Table()
         self.__update_labels()
+        if self.remote_stop:
+            self.__stop("remote telegram admin")
         self.__main_window.after(2000, self.__update_table_and_labels)
 
     def find_table_length(self):
@@ -688,9 +719,9 @@ class GUI:
     def __place_buttons(self):
         self.__kick_buses_button = Button(self.__main_window, text="kick all buses", command=self.__bus_controller.kick_all_buses,
                              width=11, height=2, fg="navy", activebackground="snow3")
-        self.__kick__all_passengers = Button(self.__main_window, text="stop server", command=self.__kick_passengers,
+        self.__kick__all_passengers = Button(self.__main_window, text="kick all passengers", command=self.__kick_passengers,
                                     width=11, height=2, fg="navy", activebackground="snow3")
-        self.__stop_button = Button(self.__main_window, text="stop server", command=self.stop,
+        self.__stop_button = Button(self.__main_window, text="stop server", command=self.__stop,
                                     width=11, height=2, fg="red", background="floral white", activebackground="gray18")
 
         self.__kick_buses_button.place(x=500, y=400)
@@ -746,12 +777,11 @@ def main():
     """start the server"""
 
     myserver = BusController()
-    myserver.start()
-
     steve = TelegramController("990223452:AAHrln4bCzwGpkR2w-5pqesPHpuMjGKuJUI", myserver)
-    threading.Thread(steve.start(), args=())
-
     gui = GUI(myserver, steve)
+
+    myserver.start()
+    steve.start(gui)
     gui.start()
 
 
