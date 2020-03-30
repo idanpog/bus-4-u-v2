@@ -4,23 +4,19 @@ author: Idan Pogrebinsky
 -- server --
 """
 
+# before launching type pip install python-telegram-bot --upgrade in
 
-#before launching type pip install python-telegram-bot --upgrade in
-
-
-#TODO: add admin access
-#TODO: measure latency and display it
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import socket
 import threading
 from sqlite3 import *
 
-
 from tkinter import *
 from tkinter.ttk import Treeview
 from time import sleep
 import random
+
 
 class TelegramController:
     """
@@ -35,12 +31,13 @@ class TelegramController:
         self.bus_controller = bus_controller
         self.__updater = None
         self.__dp = None
-        self.__users = dict() #dictonary {id: user} (str: User)
+        self.__users = dict()  # dictonary {id: user} (str: User)
         self.__gui = None
 
     def start(self, gui):
         self.__gui = gui
-        update_tracking_thread = threading.Thread(target=self.__luanch_handlers, args=(), name="Telegram Controller thread")
+        update_tracking_thread = threading.Thread(target=self.__luanch_handlers, args=(),
+                                                  name="Telegram Controller thread")
         update_tracking_thread.start()
 
     def stop(self):
@@ -73,7 +70,7 @@ class TelegramController:
         # logging.getLogger()
         # updater.idle()
 
-    #handlers
+    # handlers
     def stop_all(self, update, context):
         user = self.User(update)
         if not self.data_base.check_admin(user):  # allow access only to admins.
@@ -82,18 +79,18 @@ class TelegramController:
             user.send_message(output)
             return
         message = update.message.text.lower().split(" ")
-        if len(message)!=2:
+        if len(message) != 2:
             output = "you must type the full command to stop the server\n" \
                      "try /stop server\n" \
                      "USE ONLY IF YOU MUST"
-        elif update.message.text.split(" ")[1]!="server":
+        elif update.message.text.split(" ")[1] != "server":
             output = "You typed the wrong command.\n" \
                      "If you are sure that you want to stop the server type /stop server\n" \
                      "USE ONLY IF YOU MUST"
         else:
             output = "Stopping server."
             print("stopping by remote request from the Telegram admins.")
-            self.__gui.remote_stop =True #has to be done this way so the threads don't interfer with tkinter.
+            self.__gui.remote_stop = True  # has to be done this way so the threads don't interfer with tkinter.
         self.data_base.log(user, update.message.text, output)
         user.send_message(output)
 
@@ -105,20 +102,20 @@ class TelegramController:
         else:
             """Send help when the command /help is issued."""
             output = '/bus {line} {station} \n' \
-                                      '/history show/clear\n' \
-                                      '/show lines\n' \
-                                      '/help'
+                     '/history show/clear\n' \
+                     '/show lines\n' \
+                     '/help'
 
             if self.data_base.check_admin(user):
                 output += '\n--admin commands --\n' \
-                         '/kick\n' \
-                     '/promote {me/id}\n' \
-                     '/demote {me/id}\n' \
-                     '/stop'
+                          '/kick\n' \
+                          '/promote {me/id}\n' \
+                          '/demote {me/id}\n' \
+                          '/stop'
         update.message.reply_text(output)
         self.data_base.log(user, update.message.text, output)
 
-    def show(self,update, context):
+    def show(self, update, context):
         message = update.message.text.lower().split(" ")
         if message[1].lower() == "lines":
             print("showing lines")
@@ -140,7 +137,7 @@ class TelegramController:
             else:
                 output = "Cannot promote, you're already an Admin."
         elif len(message) == 2:
-            if not self.data_base.check_admin(id = message[1]):
+            if not self.data_base.check_admin(id=message[1]):
                 self.data_base.promote_admin(id=message[1])
                 output = f"Promoted user with ID: {message[1]} to Admin role."
             else:
@@ -189,14 +186,13 @@ class TelegramController:
         update.message.reply_text(output)
         self.data_base.log(user, update.message.text, output)
 
-
     def bus(self, update, context):
         """takes care of the user requests
         /bus {line} {station}
         adds the request into the system, sends a message to the bus and logs the request in the logs"""
         user = self.User(update)
         message = update.message.text.lower().split(" ")
-        if len(message)!=3:
+        if len(message) != 3:
             output = "looks like you have a little mistake in the command\n" \
                      "try /bus {bus number} {station number}" \
                      "for example /bus 14 3"
@@ -204,10 +200,10 @@ class TelegramController:
             try:
                 line = int(message[1])
                 station = int(message[2])
-
-                self.bus_controller.notify_buses_about_people(line, station)
+                self.bus_controller.add_person_to_the_station(line, station)
                 if self.bus_controller.check_line(line):
                     output = f"request accepted, the bus is notified"
+                    self.bus_controller.notify_buses_about_passenger(line, station)
                 else:
                     output = f"request accepted, but there are no buses available for that line yet"
                 self.__add_to_users_dict(update)
@@ -218,17 +214,17 @@ class TelegramController:
         self.data_base.log(user, update.message.text, output)
         update.message.reply_text(output)
 
-    def kick(self, update,  context): # admin command
+    def kick(self, update, context):  # admin command
         user = self.User(update)
 
-        if not self.data_base.check_admin(user): #allow access only to admins.
+        if not self.data_base.check_admin(user):  # allow access only to admins.
             output = "you cannot access this command, must be an admin"
             self.data_base.log(user, update.message.text, output)
             user.send_message(output)
             return
         message = update.message.text.lower().split(" ")
         if message[1] == "buses":
-            if len(self.bus_controller.bus_dict) ==0:
+            if len(self.bus_controller.bus_dict) == 0:
                 output = "there are already no buses in the system"
             else:
                 self.bus_controller.kick_all_buses()
@@ -237,22 +233,23 @@ class TelegramController:
             self.kick_all_passengers("kicked all users by an admin")
             output = "successfully kicked all the passengers"
         else:
-            output ="unrecognized command. try /kick buses or /kick people"
+            output = "unrecognized command. try /kick buses or /kick people"
         self.data_base.log(user, update.message.text, output)
         user.send_message(output)
 
     def kick_all_passengers(self, reason):
         for user in self.__users.values():
-            user.send_message(f"hello {user.name.split(' ')[0]}, it looks like you've been kicked out of the system for: {reason}")
+            user.send_message(
+                f"hello {user.name.split(' ')[0]}, it looks like you've been kicked out of the system for: {reason}")
         self.__users = {}
         self.bus_controller.kick_all_passengers()
 
     def __kick_passenger(self, user, reason):
         try:
-            user.send_message(f"hello {user.name.split(' ' )[0]}, it looks like you've been kicked out of the system for: {reason}")
+            user.send_message(
+                f"hello {user.name.split(' ')[0]}, it looks like you've been kicked out of the system for: {reason}")
             del self.__users[user.id]
         except Error as e:
-            print(e)
             print("the person you're trying to delete doesn't exist.")
 
     def __add_to_users_dict(self, update):
@@ -273,32 +270,39 @@ class TelegramController:
         def __init__(self, line_number, station_number):
             self.__line_number = line_number
             self.__station_number = station_number
+
         @property
         def line_number(self):
             return self.__line_number
+
         @property
         def station_number(self):
             return self.__station_number
 
     class User:
         def __init__(self, telegram_info):
-
             self.__telegram_info = telegram_info
             self.__stations = []
+
         def add_station(self, station):
             self.__stations.append(station)
+
         def send_message(self, text):
             print(f"sent message to {self.name}, '{text}'")
             self.__telegram_info.message.reply_text(text)
+
         @property
         def stations(self):
             return self.__stations
+
         @property
         def telegram_info(self):
             return self.__telegram_info
+
         @property
         def id(self):
             return self.__telegram_info.message.from_user.id
+
         @property
         def name(self):
             return self.__telegram_info.message.from_user.name
@@ -311,7 +315,7 @@ class DataBaseManager:
         self.__update_admin_cache()
 
     def has_history(self, user):
-        #returnes true if the user is in the system, looks by the ID
+        # returnes true if the user is in the system, looks by the ID
         header = connect(self.__path)
         curs = header.cursor()
         curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
@@ -361,7 +365,7 @@ class DataBaseManager:
             newlist.append(item[0])
         self.__admins = newlist
 
-    def check_admin(self, user = None, id = None):
+    def check_admin(self, user=None, id=None):
         if id == None:
             id = user.id
         return str(id) in self.__admins
@@ -369,17 +373,17 @@ class DataBaseManager:
     def promote_admin(self, user=None, id=None):
         if id == None:
             id = user.id
-        if not self.check_admin(id =id):
+        if not self.check_admin(id=id):
             header = connect(self.__path)
             curs = header.cursor()
             curs.execute("INSERT INTO admins(ID) VALUES(?)", (id,))
             header.commit()
             self.__update_admin_cache()
 
-    def demote_admin(self, user = None, id = None):
+    def demote_admin(self, user=None, id=None):
         if id == None:
             id = user.id
-        if self.check_admin(id = id):
+        if self.check_admin(id=id):
             header = connect(self.__path)
             curs = header.cursor()
             curs.execute("DELETE FROM admins WHERE ID = (?)", (id,))
@@ -387,17 +391,15 @@ class DataBaseManager:
             self.__update_admin_cache()
 
 
-
-
 class BusController:
-
     """takes control over the buses and the communication with them"""
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
     PASSENGERS_PORT = 8202
     HEART_BEAT_PORT = 8203
     HOST = socket.gethostbyname(socket.gethostname())
-    PULSE_DELAY=3
+    PULSE_DELAY = 3
+
     def __init__(self):
         # used to accept and listen for new buses that join the system
         self.__new_bus_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -407,17 +409,19 @@ class BusController:
         self.__bus_stations_port = 8201
 
         self.__ipv4 = (socket.gethostbyname(socket.gethostname()))
-        self.__bus_dict = {} #self.__bus_dict[line_num] holds an array that contains all the buses
-        self.__stations_dict = {} # self.__stations_dict[line_num][station] holds the amount of people at the station
-                                  # it's a dictionary in a dictionary stracture
-        self.__stop_threads = False # used to stop all the threads in the server for proper shutdown
+        self.__bus_dict = {}  # self.__bus_dict[line_num] holds an array that contains all the buses
+        self.__stations_dict = {}  # self.__stations_dict[line_num][station] holds the amount of people at the station
+        # it's a dictionary in a dictionary stracture
+        self.__stop_threads = False  # used to stop all the threads in the server for proper shutdown
 
     @property
     def bus_dict(self):
         return self.__bus_dict
+
     @property
     def stations_dict(self):
         return self.__stations_dict
+
     @property
     def buses_count(self):
         count = 0
@@ -425,6 +429,7 @@ class BusController:
             # for item in buses:
             count += len(line)
         return count
+
     @property
     def people_count(self):
         count = 0
@@ -434,11 +439,11 @@ class BusController:
         return count
 
     def start(self):
-        new_bus_receiver =threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
+        new_bus_receiver = threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
         new_bus_receiver.start()
-        updates_tracker =threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
+        updates_tracker = threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
         updates_tracker.start()
-        heart_beat =threading.Thread(target=self.__heart, args=(), name="Heart beats")
+        heart_beat = threading.Thread(target=self.__heart, args=(), name="Heart beats")
         heart_beat.start()
 
     def stop(self):
@@ -459,7 +464,7 @@ class BusController:
                 line_num, station, ID = data.decode().split(" ")
                 try:
                     for bus in self.__bus_dict[int(line_num)]:
-                        if bus.get_id() == ID:
+                        if bus.id == ID:
                             if station.isnumeric():
                                 bus.set_station(station)
                                 self.__notify_buses_about_buses(int(line_num))
@@ -486,21 +491,26 @@ class BusController:
                 self.__add_bus(bus)
                 client_socket.close()
                 self.__notify_buses_about_buses(line_num)
-            except:
+            except Error as e:
                 print("closed the new_bus_reciever thread")
 
-
     def __add_bus(self, bus):
-        print(f"added bus {bus}")
-        if bus.get_line_num() in self.__bus_dict:
-            self.__bus_dict[bus.get_line_num()].append(bus)
+        print("in add bus")
+        if bus.line_num in self.__bus_dict:
+            self.__bus_dict[bus.line_num].append(bus)
         else:
-            self.__bus_dict[bus.get_line_num()] = [bus,]
+            self.__bus_dict[bus.line_num] = [bus, ]
 
-    def notify_buses_about_people(self, line, station):
-        # updates the dictionary that keeps track for all the passengers
-        # self.__stations_dict[line][station] = number of people waitig at the current station for that line
-        print("in __notify_buses_about_people")
+        if bus.line_num in self.stations_dict.keys():
+            print("in the if station")
+            self.__update_bus_about_all_stations(bus)
+        print(f"added bus {bus}")
+
+    def notify_buses_about_passenger(self, line, station):
+        data = f"people {station} {self.__stations_dict[line][station]}"
+        self.__send_to_all_buses(line, data)
+
+    def add_person_to_the_station(self,line , station):
         if line in self.__stations_dict:
             if station in self.__stations_dict[line]:
                 self.__stations_dict[line][station] += 1
@@ -508,10 +518,6 @@ class BusController:
                 self.__stations_dict[line][station] = 1
         else:
             self.__stations_dict[line] = {station: 1}
-        if line not in self.__bus_dict:
-            return
-        data = f"people {station} {self.__stations_dict[line][station]}"
-        self.__send_to_all_buses(line, data)
 
     def __notify_buses_about_buses(self, line_num):
         if not self.check_line(line_num):
@@ -519,7 +525,7 @@ class BusController:
         data = "buses "
         line_num = int(line_num)
         for bus in self.__bus_dict[line_num]:
-            data += str(bus.get_station()) + ","
+            data += str(bus.station_num) + ","
         data = data[0:-1:]
         self.__send_to_all_buses(line_num, data)
 
@@ -531,10 +537,25 @@ class BusController:
             except:
                 print(f"{bus} is unavailable, kicked out of the system")
                 self.remove_bus(bus)
-                self.__notify_buses_about_buses(bus.get_line_num())
+                self.__notify_buses_about_buses(bus.line_num)
 
     def get_bus_dict(self):
         return self.__bus_dict
+
+    def __update_bus_about_all_stations(self, bus): #1-3,4-1,13-0
+        """
+        tells the bus about the the passengers waiting for him at the stations.
+        used when the bus first joins the system.
+        """
+        data = "all passengers\n"
+        try:
+            for station_number, people_count in self.__stations_dict[bus.line_num].items():
+                data += f"{station_number}-{people_count},"
+            data = data[:-1:]
+            print(data)
+            bus.send_to_bus(data)
+        except Error as e:
+            pass
 
     def show_available_lines(self):
         if len(self.__bus_dict) == 0:
@@ -546,8 +567,11 @@ class BusController:
         print("kicked all buses from the system")
 
     def kick_all_passengers(self):
+        changed_lines = self.__stations_dict.keys()
+        for line in changed_lines:
+            if line in self.__bus_dict:
+                    self.__send_to_all_buses(line, "kick all passengers")
         self.__stations_dict = {}
-        print("kicked all passengers from the system")
 
     def __check_duplicates(self):
         buses = []
@@ -556,8 +580,8 @@ class BusController:
                 buses.append(bus)
 
         for idx, bus in enumerate(buses):
-            for another_bus in buses[idx+1::]:
-                if bus.get_id()== another_bus.get_id():
+            for another_bus in buses[idx + 1::]:
+                if bus.id == another_bus.id:
                     print(f"found duplicates, {bus}\n\n {another_bus}")
                     self.remove_bus(bus)
                     self.remove_bus(another_bus)
@@ -571,12 +595,12 @@ class BusController:
         print("stopped the heartbeats")
 
     def __pulse_all(self):
-        #will launch a thread for each bus that will use the command indevidual_pulse
-        if len(self.__bus_dict)==0:
+        # will launch a thread for each bus that will use the command indevidual_pulse
+        if len(self.__bus_dict) == 0:
             return
         for line in self.__bus_dict.values():
             for bus in line:
-                threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.get_id()}").start()
+                threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.id}").start()
 
     def __indevidual_pulse(self, bus):
         # will send the bus a message
@@ -591,38 +615,39 @@ class BusController:
         return int(line) in self.__bus_dict
 
     def remove_bus(self, bus):
-        self.__bus_dict[bus.get_line_num()].remove(bus)
+        self.__bus_dict[bus.line_num].remove(bus)
         print(f"removed: {bus}")
-        if len(self.__bus_dict[bus.get_line_num()]) == 0:
-            del self.__bus_dict[bus.get_line_num()]
+        if len(self.__bus_dict[bus.line_num()]) == 0:
+            del self.__bus_dict[bus.line_num()]
             print("removed the whole line")
         else:
-            self.__notify_buses_about_buses(bus.get_line_num())
-
+            self.__notify_buses_about_buses(bus.line_num)
 
     class Bus:
         def __init__(self, address, line_number, station, ID):
             self.__address = address
             self.__station = int(station)
             self.__line_number = int(line_number)
-            self.__ID = ID
+            self.__id = ID
 
-        def get_addr(self):
-            return self.__address
 
-        def get_station(self):
+
+        @property
+        def station_num(self):
             return self.__station
+        @property
+        def line_num(self):
+            return self.__line_number
+
+        @property
+        def id(self):
+            return self.__id
+
         def set_station(self, station):
             self.__station = int(station)
 
-        def get_line_num(self):
-            return self.__line_number
-
-        def get_id(self):
-            return self.__ID
-
         def update_passengers(self, station, passengers):
-            #data = {station} {number_of_people}
+            # data = {station} {number_of_people}
             print("tying to send_to_bus")
             data = f"people {station} {passengers}"
             self.send_to_bus(data)
@@ -632,25 +657,25 @@ class BusController:
             s.connect((self.__address[0], BusController.PASSENGERS_PORT))
             # data = {people} {station} {number_of_people}
             # data = {buses} {bus1,bus2,bus3,...busn}
-            data  = str(data).encode()
+            data = str(data).encode()
             s.send(data)
             s.close()
 
         def check_up(self):
-            #send a Check notification
-            #returs True if everything is valid and false if the bus returned the wrong ID or didn't respond
+            # send a Check notification
+            # returs True if everything is valid and false if the bus returned the wrong ID or didn't respond
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(BusController.PULSE_DELAY*0.8)
+            s.settimeout(BusController.PULSE_DELAY * 0.8)
             output = True
             try:
                 s.connect((self.__address[0], BusController.HEART_BEAT_PORT))
                 data = "Check".encode()
                 s.send(data)
                 data = s.recv(1024).decode()
-                if int(data) != int(self.__ID):
-                    print(f"bus had the wrong ID\nwas supposed to be {self.__ID}, but received {data}")
+                if int(data) != int(self.__id):
+                    print(f"bus had the wrong ID\nwas supposed to be {self.__id}, but received {data}")
                     output = False
-            #listen for an answer
+            # listen for an answer
             except:
                 print(f"something went wrong, couldn't establish connection with {self.__address}")
                 output = False
@@ -659,7 +684,6 @@ class BusController:
 
         def __str__(self):
             return f"line number: [{self.__line_number}], Current station [{self.__station}] \naddress: {self.__address}"
-
 
 
 class GUI:
@@ -693,7 +717,7 @@ class GUI:
         self.__update_table_and_labels()
         self.__main_window.mainloop()
 
-    def __stop(self, reason = "user"):
+    def __stop(self, reason="user"):
         print(f"trying to close because {reason}")
         try:
             self.__main_window.destroy()
@@ -703,11 +727,9 @@ class GUI:
         self.__telegram_controller.stop()
         self.__bus_controller.stop()
 
-
         sys.exit(f"properly closed by {reason}")
 
     def __kick_passengers(self):
-        print("in gui.__kick_passengers")
         self.__telegram_controller.kick_all_passengers("kicked all passengers by an admin")
 
     def __update_table_and_labels(self):
@@ -725,16 +747,16 @@ class GUI:
 
         for buses in self.__bus_controller.bus_dict.values():
             if len(buses) != 0:
-                buses.sort(key=lambda bus: bus.get_station())
-                max_x_bus = max(buses[-1].get_station(), max_x_bus)
+                buses.sort(key=lambda bus: bus.station_num)
+                max_x_bus = max(buses[-1].station_num, max_x_bus)
         max_x = max(max_x_bus, max_x_stations)
         return max_x
 
     def __update_Table(self):
         # used to refresh the data in the table, it generates the data and then puts it in.
         headlines = ["", ]
-        headlines += range(1,  + 1)
-        headlines = [" "]+ [str(x) for x in range(1, self.find_table_length() + 1)]
+        headlines += range(1, + 1)
+        headlines = [" "] + [str(x) for x in range(1, self.find_table_length() + 1)]
         self.__main_display_table.config(columns=headlines)
 
         for headline in headlines:
@@ -744,28 +766,33 @@ class GUI:
         data = self.__display_buses_location()
 
         for i in self.__main_display_table.get_children():
-            #deletes all the data in the chart
+            # deletes all the data in the chart
             self.__main_display_table.delete(i)
         for line in data:
-            #inserts new data into the chart, goes line by line
+            # inserts new data into the chart, goes line by line
             self.__main_display_table.insert("", END, values=line)
 
         self.__main_display_table.place(x=0, y=0, width=480, height=480)
 
     def __update_labels(self):
-        active_lines_label = Label(self.__main_window, text="Number of active lines: " + str(len(self.__bus_controller.bus_dict)))
-        number_of_buses_label = Label(self.__main_window, text="Number of buses in the system: " + str(self.__bus_controller.buses_count))
-        number_of_people_lable = Label(self.__main_window, text="Number of people waiting: " + str(self.__bus_controller.people_count))
+        active_lines_label = Label(self.__main_window,
+                                   text="Number of active lines: " + str(len(self.__bus_controller.bus_dict)))
+        number_of_buses_label = Label(self.__main_window,
+                                      text="Number of buses in the system: " + str(self.__bus_controller.buses_count))
+        number_of_people_lable = Label(self.__main_window,
+                                       text="Number of people waiting: " + str(self.__bus_controller.people_count))
 
         active_lines_label.place(x=500, y=0)
         number_of_buses_label.place(x=500, y=30)
         number_of_people_lable.place(x=500, y=60)
 
     def __place_buttons(self):
-        self.__kick_buses_button = Button(self.__main_window, text="kick all buses", command=self.__bus_controller.kick_all_buses,
-                             width=11, height=2, fg="navy", activebackground="snow3")
-        self.__kick__all_passengers = Button(self.__main_window, text="kick all passengers", command=self.__kick_passengers,
-                                    width=11, height=2, fg="navy", activebackground="snow3")
+        self.__kick_buses_button = Button(self.__main_window, text="kick all buses",
+                                          command=self.__bus_controller.kick_all_buses,
+                                          width=11, height=2, fg="navy", activebackground="snow3")
+        self.__kick__all_passengers = Button(self.__main_window, text="kick all passengers",
+                                             command=self.__kick_passengers,
+                                             width=11, height=2, fg="navy", activebackground="snow3")
         self.__stop_button = Button(self.__main_window, text="stop server", command=self.__stop,
                                     width=11, height=2, fg="red", background="floral white", activebackground="gray18")
 
@@ -775,46 +802,45 @@ class GUI:
 
     def __display_buses_location(self):
 
-
         if len(self.__bus_controller.bus_dict) == 0 and len(self.__bus_controller.stations_dict) == 0:
-            return [[]] #breaks the run if there are no buses
+            return [[]]  # breaks the run if there are no buses
         data = []
-        empty_list = [] # an empty list that has placeholders for later use
+        empty_list = []  # an empty list that has placeholders for later use
         for i in range(self.find_table_length()):
             empty_list.append(" ")
         if len(self.__bus_controller.stations_dict) != 0:
-            #makes sure that there are people waiting somewhere before we start marking them
+            # makes sure that there are people waiting somewhere before we start marking them
             for line, stations in self.__bus_controller.stations_dict.items():
-                list = [str(line)] +  empty_list
+                list = [str(line)] + empty_list
                 # creates the first line that has the placeholders and the line number
                 for station, people_count in stations.items():
                     list[station] = people_count
-                    #overrides the placeholders with the amount of people waiting at the station
+                    # overrides the placeholders with the amount of people waiting at the station
                 data.append(list)
 
-        relevant_lines =[]
-        #just shows all the lines that are already in the list and showing passengers
+        relevant_lines = []
+        # just shows all the lines that are already in the list and showing passengers
         if len(self.__bus_controller.stations_dict) != 0:
             for list in data:
                 relevant_lines.append(list[0])
             print(f"relevant lines{relevant_lines}")
         """buses override passengers when they colide in the same line"""
         for line, buses in self.__bus_controller.bus_dict.items():
-            #puts an X wherever there's a bus
+            # puts an X wherever there's a bus
             if str(line) in str(relevant_lines):
                 print(f"{line} was found relevant")
                 # if the line is already there it doesn't add another list into data
                 for bus in buses:
-                    data[relevant_lines.index(str(line))][bus.get_station()] = "X"
+                    data[relevant_lines.index(str(line))][bus.station_num] = "X"
             else:
                 # if the line isn't there yet it adds another list that contains a placeholder and an X for each bus
-                list = [str(line)] +  empty_list
+                list = [str(line)] + empty_list
                 for bus in buses:
-                    list[bus.get_station()] = "X"
+                    list[bus.station_num] = "X"
                 data.append(list)
 
         data = sorted(data, key=lambda list: int(list[0]))
-        #sorts data by the first Value in the list so it would show the lines sorted.
+        # sorts data by the first Value in the list so it would show the lines sorted.
         return data
 
 
@@ -828,8 +854,6 @@ def main():
     myserver.start()
     steve.start(gui)
     gui.start()
-
-
 
 
 if __name__ == '__main__':

@@ -8,7 +8,6 @@ from tkinter.ttk import Treeview
 from time import sleep
 import random
 
-#fix crash -> try to login, fail to login, hit try again and fail, then hit X
 class Bus:
     NEW_CONNECTION_PORT=8200
     STATIONS_PORT=8201
@@ -30,7 +29,6 @@ class Bus:
     def connected(self):
         return self.__connected
 
-
     def start(self):
         try:
             self.__connect_to_server()
@@ -41,7 +39,6 @@ class Bus:
         update_tracking_thread.start()
         heartbeats_thread = threading.Thread(target=self.__respond_to_heartbeats, args=(), name="heartbeats_thread")
         heartbeats_thread.start()
-
 
     def __respond_to_heartbeats(self):
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -80,6 +77,7 @@ class Bus:
             Socket.listen(1)
             client_socket, addr = Socket.accept()
             data = client_socket.recv(1024).decode()
+            print(data)
             # data  = {"people"} {station} {number_of_people}
             # data  = {"buses"} {bus1,bus2,bus3....,busn}
             if data.split(" ")[0] == "people":
@@ -91,6 +89,15 @@ class Bus:
                 self.__buses = data.split(" ")[1].split(",")
                 map_object = map(int, self.__buses)
                 self.__buses = list(map_object)
+            elif data.split("\n")[0] == "all passengers": #1-3,4-1,13-0
+                data = data.split("\n")[1].split(",")
+                for station in data:
+                    number_of_people =int(station[2])
+                    station_number = int(station[0])
+                    self.__stations[int(station_number)] = int(number_of_people)
+
+            elif data == "kick all passengers":
+                self.__stations = {}
 
             Socket.close()
 
@@ -112,19 +119,19 @@ class Bus:
         Socket.send(data.encode())
         Socket.close()
 
-    def get_number_of_stations(self):
-        #finds how big the table has to be
-        # min size = 10
+    @property
+    def max_number_of_stations(self):
         biggest = max(self.__station, 10)
         if (len(self.__stations) != 0):
             biggest = max(max(self.__stations.keys()), biggest)
-        if len(self.__buses)!= 0:
+        if len(self.__buses) != 0:
             biggest = max(biggest, max(self.__buses))
         return biggest
 
+
     def display_passengers(self):
         list = [""]
-        for i in range(self.get_number_of_stations()+1):
+        for i in range(self.max_number_of_stations + 1):
             list.append("")
 
         for station, count in self.__stations.items():
@@ -168,7 +175,7 @@ class GUI:
     def start(self):
         self.__bus = Bus(self, self.__id, self.__line, self.__station)
         self.__bus.start()
-        self.__headlines = [str(x) for x in range(1, self.__bus.get_number_of_stations() + 1)]
+        self.__headlines = [str(x) for x in range(1, self.__bus.max_number_of_stations + 1)]
         self.__window = Tk()
         self.__window.geometry("472x250")
         # window.geometry("472x350")
@@ -210,7 +217,7 @@ class GUI:
         self.__stop_button.place(x=380, y=100)
 
     def __loop(self):
-        self.__headlines = [str(x) for x in range(1, self.__bus.get_number_of_stations() + 1)]
+        self.__headlines = [str(x) for x in range(1, self.__bus.max_number_of_stations + 1)]
         self.__update_Table()
         self.__update_labels()
         self.__window.after(500, self.__loop)
@@ -288,7 +295,9 @@ class GUI:
                              ,activebackground="gray", command=lambda: self.__try_to_reconnect("PreLogin"))
         next_button.place(x=32, y=90)
         self.__disconnected_window.mainloop()
-        if not self.__bus.connected:
+        try:
+            print(self.__bus.connected)
+        except:
             sys.exit("closed by user")
 
     @staticmethod
@@ -316,12 +325,12 @@ class GUI:
         id_entry = self.place_entry_and_label(window, "Bus ID", (110, 70),default_value=str(random.randint(1,11111111)))
         station_entry = self.place_entry_and_label(window, "station number", (180, 130), default_value="1")
         finish_button = tkinter.Button(window, text="Finish", width=25, height=2, activebackground="gray",
-                                       command=lambda: self.set_up_data(id_entry, station_entry, line_entry, window))
+                                       command=lambda: self.__set_up_data(id_entry, station_entry, line_entry, window))
 
         finish_button.place(x=70, y=200)
         window.mainloop()
 
-    def set_up_data(self, id_entry, station_entry, line_entry, window):
+    def __set_up_data(self, id_entry, station_entry, line_entry, window):
         try:
             self.__id = int(id_entry.get())
             self.__line = int(line_entry.get())
