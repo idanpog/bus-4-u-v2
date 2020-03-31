@@ -15,8 +15,11 @@ from sqlite3 import *
 from tkinter import *
 from tkinter.ttk import Treeview
 from time import sleep
+from hashlib import md5
 import random
-
+#TODO: when the user requests for 2 or stations in the same line, upon canceling one of the stations it gets stuck in
+#the updating buses proccess. self.notify_buses_about_passenger(str(station.line_number), str(station.station_number))
+#this line makes me problems
 
 class TelegramController:
     """
@@ -60,12 +63,14 @@ class TelegramController:
         self.__dp.add_handler(CommandHandler("help", self.help))
         self.__dp.add_handler(CommandHandler("history", self.history))
         self.__dp.add_handler(CommandHandler("bus", self.bus))
+        self.__dp.add_handler(CommandHandler("cancel", self.cancel))
         self.__dp.add_handler(CommandHandler("show", self.show))
         self.__dp.add_handler(CommandHandler("promote", self.promote))
         self.__dp.add_handler(CommandHandler("demote", self.demote))
         self.__dp.add_handler(CommandHandler("checkadmin", self.check_admin))
         self.__dp.add_handler(CommandHandler("kick", self.kick))
         self.__dp.add_handler(CommandHandler("stop", self.stop_all))
+        self.__dp.add_handler(CommandHandler("whatsmyid", self.__whatsmyid))
         self.__updater.start_polling()
         # logging.getLogger()
         # updater.idle()
@@ -113,7 +118,13 @@ class TelegramController:
                           '/demote {me/id}\n' \
                           '/stop'
         update.message.reply_text(output)
-        self.data_base.log(user, update.message.text, output)
+        self.data_base.log(user, update.message.text, "*helped*")
+
+    def __whatsmyid(self, update, context):
+        user = self.User(update)
+        output = f"your ID is: {user.id}"
+        user.send_message(output)
+        self.data_base.log(user, update.message.text, "*"*len(str(user.id)))
 
     def show(self, update, context):
         message = update.message.text.lower().split(" ")
@@ -125,7 +136,6 @@ class TelegramController:
             update.message.reply_text("try /show lines")
 
     def promote(self, update, context):
-        print("in promote")
         message = update.message.text.lower().split(" ")
         user = self.User(update)
         output = "error"
@@ -143,25 +153,27 @@ class TelegramController:
             else:
                 output = "The user you're trying to Promote is already an admin"
         self.data_base.log(user, update.message.text, output)
-
         user.send_message(output)
 
     def demote(self, update, context):
         message = update.message.text.lower().split(" ")
         user = self.User(update)
+        output = ""
         if message[1] == "me":
             print(f"demoting {user.name}:{user.id}")
             if self.data_base.check_admin(user):
                 self.data_base.demote_admin(user)
-                user.send_message("congratulations sir, you're no longer an Admin.")
+                output = "congratulations sir, you're no longer an Admin."
             else:
-                user.send_message("Cannot demote, you're already a regular user.")
+                output = "Cannot demote, you're already a regular user."
         elif len(message) == 2:
             if self.data_base.check_admin(id=message[1]):
                 self.data_base.demote_admin(id=message[1])
-                user.send_message(f"demoted user  with ID: {message[1]} from Admin role.")
+                output = f"demoted user  with ID: {message[1]} from Admin role."
             else:
-                user.send_message("The user you're trying to demote isn't an admin.")
+                output = "The user you're trying to demote isn't an admin."
+        user.send_message(output)
+        self.data_base.log(user, update.message.text, output)
 
     def check_admin(self, update, context):
         user = self.User(update)
@@ -172,19 +184,23 @@ class TelegramController:
     def history(self, update, context):
         message = update.message.text.lower().split(" ")
         user = self.User(update)
+        output = ""
         if message[1] == "show":
             if not self.data_base.has_history(user):
                 output = "you don't have any history"
+                self.data_base.log(user, update.message.text, output)
             else:
                 output = self.data_base.show_history(user)
+                self.data_base.log(user, update.message.text, "Successful showed history")
+
         if message[1] == "clear":
             if not self.data_base.has_history(user):
                 output = "your history is already clean"
             else:
                 self.data_base.clear_history(user)
                 output = "Clean"
-        update.message.reply_text(output)
-        self.data_base.log(user, update.message.text, output)
+            self.data_base.log(user, update.message.text, output)
+        user.send_message(output)
 
     def bus(self, update, context):
         """takes care of the user requests
@@ -213,6 +229,38 @@ class TelegramController:
 
         self.data_base.log(user, update.message.text, output)
         update.message.reply_text(output)
+
+    def cancel(self, update, context):
+        #/cancel {line num} {station}
+        output = ""
+        user = self.User(update)
+        message = update.message.text.lower().split(" ")
+        print(message[1], message[2])
+        if user.id not in self.__users.keys():
+            output = "looks like you don't have any requests at all."
+        elif message[1].isnumeric() and message[2].isnumeric():
+            user = self.__users[user.id]
+            line_num = int(message[1])
+            station_num = int(message[2])
+            found_match = False
+            for station in user.stations:
+                if station.line_number == line_num and station.station_number == station_num:
+                    user.remove_station(station)
+                    self.bus_controller.remove_person_from_the_station(station)
+                    output = "Canceled the request"
+                    found_match = True
+                    break
+                else:
+                    print(f"WRONG{type(station.line_number)} == {type(line_num)} and {type(station.station_number)} == {type(station_num)}")
+                    print(
+                        f"WRONG{station.line_number} == {line_num} and {station.station_number} == {station_num}")
+            if not found_match:
+                output = "this doesn't match with any of your active requests, so you can't cancel it.\n" \
+                         "make sure that you don't have any typing mistakes"
+        else:
+            output = "the values you entered seem wrong, the values must be number."
+        self.data_base.log(user, update.message.text, output)
+        user.send_message(output)
 
     def kick(self, update, context):  # admin command
         user = self.User(update)
@@ -253,10 +301,11 @@ class TelegramController:
             print("the person you're trying to delete doesn't exist.")
 
     def __add_to_users_dict(self, update):
+        # creates a "user" class, if there is a user with a matching ID in the self.__users
+        # then the user in the dictionary will be added another station to the stations storage.
         message = update.message.text.lower().split(" ")
         line_num = int(message[1])
         station_num = int(message[2])
-
         station = self.Station(line_num, station_num)
         user = self.User(update)
         user.add_station(station)
@@ -268,8 +317,8 @@ class TelegramController:
 
     class Station:
         def __init__(self, line_number, station_number):
-            self.__line_number = line_number
-            self.__station_number = station_number
+            self.__line_number = int(line_number)
+            self.__station_number = int(station_number)
 
         @property
         def line_number(self):
@@ -286,6 +335,9 @@ class TelegramController:
 
         def add_station(self, station):
             self.__stations.append(station)
+
+        def remove_station(self,station):
+            self.__stations.remove(station)
 
         def send_message(self, text):
             print(f"sent message to {self.name}, '{text}'")
@@ -310,29 +362,31 @@ class TelegramController:
 
 class DataBaseManager:
     def __init__(self):
-        self.__path = "banlist.db"
+        self.__path = "DataBase.db"
         self.__admins = []
+        self.__banned = []
         self.__update_admin_cache()
 
     def has_history(self, user):
+
         # returnes true if the user is in the system, looks by the ID
         header = connect(self.__path)
         curs = header.cursor()
-        curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
+        curs.execute("SELECT * FROM users WHERE id = (?)", (md5(str(user.id).encode()).hexdigest(),))
         data = curs.fetchall()
         return len(data) >= 1
 
     def show_history(self, user):
         header = connect(self.__path)
         curs = header.cursor()
-        curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
+        curs.execute("SELECT * FROM users WHERE id = (?)", (md5(str(user.id).encode()).hexdigest(),))
         data = curs.fetchall()[0][1]
         return data
 
     def clear_history(self, user):
         header = connect(self.__path)
         curs = header.cursor()
-        curs.execute("DELETE FROM history WHERE ID = (?)", (user.id,))
+        curs.execute("UPDATE users SET history = (?) WHERE id = (?)", ("", md5(str(user.id).encode()).hexdigest()))
         header.commit()
 
     def log(self, user: TelegramController.User, input: str = "None", output: str = "None") -> NONE:
@@ -341,24 +395,25 @@ class DataBaseManager:
         # output:string - the responce of the server.
         header = connect(self.__path)
         curs = header.cursor()
+        encrypted_id = md5(str(user.id).encode()).hexdigest()
         if not self.has_history(user):
-            curs.execute("INSERT INTO history VALUES(?, ?)", (user.id, ""))
+            curs.execute("INSERT INTO users VALUES(?, ?)", (encrypted_id, ""))
             user.send_message("Greetings, we're happy that you decided to join and use the Bus4U service!\n"
                               "in order to see all the possible commands you can type /help\n"
                               "Also we want you to know that every command that you type and the server response will"
                               "be logged and you can access your history with /history.\n\n"
                               "we hope you'll enjoy the product and wish you the best.")
 
-        curs.execute("SELECT * FROM history WHERE ID = (?)", (user.id,))
+        curs.execute("SELECT * FROM users WHERE id = (?)", (encrypted_id,))
         data = curs.fetchall()[0][1]
-        data += f"input: {input}\noutput:{output}\n" + "-" * 30 + "\n"
-        curs.execute("UPDATE history SET text = (?) WHERE ID = (?)", (data, user.id))
+        data += f"input: {input}\noutput: {output}\n" + "-" * 30 + "\n"
+        curs.execute("UPDATE users SET history = (?) WHERE id = (?)", (data, encrypted_id))
         header.commit()
 
     def __update_admin_cache(self):
         header = connect(self.__path)
         curs = header.cursor()
-        curs.execute("SELECT * FROM admins WHERE ID IS NOT NULL")
+        curs.execute("SELECT * FROM admins WHERE id IS NOT NULL")
         data = curs.fetchall()
         newlist = []
         for item in data:
@@ -368,25 +423,28 @@ class DataBaseManager:
     def check_admin(self, user=None, id=None):
         if id == None:
             id = user.id
-        return str(id) in self.__admins
+        return md5(str(id).encode()).hexdigest() in self.__admins
 
     def promote_admin(self, user=None, id=None):
+        print("now actually trying to promote admin")
         if id == None:
             id = user.id
-        if not self.check_admin(id=id):
-            header = connect(self.__path)
-            curs = header.cursor()
-            curs.execute("INSERT INTO admins(ID) VALUES(?)", (id,))
-            header.commit()
-            self.__update_admin_cache()
+        header = connect(self.__path)
+        curs = header.cursor()
+        encrypted_id = md5(str(id).encode()).hexdigest()
+        print(type(encrypted_id))
+        curs.execute("INSERT INTO admins(id) VALUES(?)", (encrypted_id,))
+        header.commit()
+        self.__update_admin_cache()
 
     def demote_admin(self, user=None, id=None):
         if id == None:
             id = user.id
         if self.check_admin(id=id):
+            print("here")
             header = connect(self.__path)
             curs = header.cursor()
-            curs.execute("DELETE FROM admins WHERE ID = (?)", (id,))
+            curs.execute("DELETE FROM admins WHERE id = (?)", (md5(str(id).encode()).hexdigest(),))
             header.commit()
             self.__update_admin_cache()
 
@@ -491,7 +549,7 @@ class BusController:
                 self.__add_bus(bus)
                 client_socket.close()
                 self.__notify_buses_about_buses(line_num)
-            except Error as e:
+            except:
                 print("closed the new_bus_reciever thread")
 
     def __add_bus(self, bus):
@@ -506,8 +564,11 @@ class BusController:
             self.__update_bus_about_all_stations(bus)
         print(f"added bus {bus}")
 
-    def notify_buses_about_passenger(self, line, station):
-        data = f"people {station} {self.__stations_dict[line][station]}"
+    def notify_buses_about_passenger(self, line: int, station: int, number_of_people: int = None) -> None:
+        if number_of_people !=None:
+            data = f"people {station} {number_of_people}"
+        else:
+            data = f"people {station} {self.__stations_dict[line][station]}"
         self.__send_to_all_buses(line, data)
 
     def add_person_to_the_station(self,line , station):
@@ -518,6 +579,18 @@ class BusController:
                 self.__stations_dict[line][station] = 1
         else:
             self.__stations_dict[line] = {station: 1}
+
+    def remove_person_from_the_station(self, station):
+        if station.line_number in self.__stations_dict and station.station_number in self.__stations_dict[station.line_number]:
+            if self.__stations_dict[station.line_number][station.station_number] == 1:
+                del self.__stations_dict[station.line_number][station.station_number]
+                self.notify_buses_about_passenger(station.line_number, station.station_number, number_of_people=0)
+            elif self.__stations_dict[station.line_number][station.station_number] > 1:
+                self.__stations_dict[station.line_number][station.station_number]-=1
+                self.notify_buses_about_passenger(station.line_number, station.station_number)
+        else:
+            print("whoops an error, looks like the current station doesn't exit and there's no person waiting for it.")
+
 
     def __notify_buses_about_buses(self, line_num):
         if not self.check_line(line_num):
@@ -531,6 +604,8 @@ class BusController:
 
     def __send_to_all_buses(self, line_num, data):
         print(f"sending to all buses in line {line_num}, {data}")
+        if line_num not in self.__bus_dict.keys():
+            return
         for bus in self.__bus_dict[line_num]:
             try:
                 bus.send_to_bus(data)
@@ -629,8 +704,6 @@ class BusController:
             self.__station = int(station)
             self.__line_number = int(line_number)
             self.__id = ID
-
-
 
         @property
         def station_num(self):
@@ -823,12 +896,10 @@ class GUI:
         if len(self.__bus_controller.stations_dict) != 0:
             for list in data:
                 relevant_lines.append(list[0])
-            print(f"relevant lines{relevant_lines}")
         """buses override passengers when they colide in the same line"""
         for line, buses in self.__bus_controller.bus_dict.items():
             # puts an X wherever there's a bus
             if str(line) in str(relevant_lines):
-                print(f"{line} was found relevant")
                 # if the line is already there it doesn't add another list into data
                 for bus in buses:
                     data[relevant_lines.index(str(line))][bus.station_num] = "X"

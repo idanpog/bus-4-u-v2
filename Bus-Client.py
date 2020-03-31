@@ -82,7 +82,10 @@ class Bus:
             # data  = {"buses"} {bus1,bus2,bus3....,busn}
             if data.split(" ")[0] == "people":
                 type_of_input, station, number_of_people = data.split(" ")
-                self.__stations[int(station)] = int(number_of_people)
+                if int(number_of_people)!=0:
+                    self.__stations[int(station)] = int(number_of_people)
+                else:
+                    del self.__stations[int(station)]
                 print(f"{number_of_people} are waiting at station number {station}, ID:{self.__id}")
 
             elif data.split(" ")[0] == "buses":
