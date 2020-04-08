@@ -11,6 +11,7 @@ from tkinter.ttk import Treeview
 
 #TODO: add custom fonts and better looking icons
 #TODO: add some better formating at the finish display so if the bus session time was above a minute it'll display everything
+#TODO: add a display that will show the bus if he needs to stop or not, make it change colors
 class Bus:
     NEW_CONNECTION_PORT=8200
     STATIONS_PORT=8201

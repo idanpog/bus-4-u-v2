@@ -17,9 +17,18 @@ from tkinter.ttk import Treeview
 from time import sleep
 from hashlib import md5
 import random
-#TODO:limit the amount of request that a single user can make to 3 requests.
-#TODO:limit the a user to request only 1 station at each line.
-#TODO:when a bus picks up a user all of his requests will be removed.
+#TODO: limit the amount of request that a single user can make to 3 requests.
+#TODO: limit the a user to request only 1 station at each line.
+#TODO: when a bus picks up a user all of his requests will be removed.
+#TODO: display total session time
+#TODO: add a bar on the top of the window with some random settings
+#TODO: make it run as an exe file
+#TODO: make a loading screen that will display the logo for a a second
+#TODO: allow the server to broadcast messages to all buses
+#TODO: allow the server to broadcast to all users
+#TODO: consider adding a remote server access
+#TODO: let the server promote users and demote them
+#TODO: go bug hunting
 #fix bug: after server restart the bus doesn't know that the users have been removed
 
 
@@ -309,6 +318,7 @@ class TelegramController:
         places a request for the bus, and notifies everyone needed.
         """
         user = self.User(update)
+        user = self.__find_matching_user(user)
         message = update.message.text.lower().split(" ")
         if len(message) != 3:
             output = "looks like you have a little mistake in the command\n" \
@@ -318,19 +328,41 @@ class TelegramController:
             try:
                 line = int(message[1])
                 station = int(message[2])
-                self.bus_controller.add_person_to_the_station(line, station)
-                if self.bus_controller.check_line(line):
+                if len(user.stations) >= 3 and not self.data_base.check_admin(user):
+                    output = "Sorry you cannot have more than 3 requests at a time."
+                elif line in map(lambda x: x.line_number, user.stations) and not self.data_base.check_admin(user):
+                    station_to_cancel = "Error"
+                    for station in user.stations:
+                        if station.line_number == line:
+                                station_to_cancel = station.station_number
+                    output = "looks like you already have a request for that line so you cannot place another one\n" \
+                             f"if that was a mistake you can cancel your request with /cancel {line} {station_to_cancel}"
+                elif self.bus_controller.check_line(line):
+                    self.bus_controller.add_person_to_the_station(line, station)
                     output = f"request accepted, the bus is notified"
                     self.bus_controller.notify_buses_about_passenger(line, station)
+                    self.__add_to_users_dict(update)
                 else:
+                    self.bus_controller.add_person_to_the_station(line, station)
                     output = f"request accepted, but there are no buses available for that line yet"
-                self.__add_to_users_dict(update)
-            except:
+                    self.__add_to_users_dict(update)
+            except Exception as e:
+                print(e)
                 output = "both of the values you give must be number in order to work" \
                          "for example, /bus 14 3"
 
         self.data_base.log(user, update.message.text, output)
         update.message.reply_text(output)
+
+    def __find_matching_user(self, user):
+        """
+        returns the user with the matching ID, if it doesn't find one then it just returnes the user that it recieved
+        :param user: a user that needs to find a match
+        :return: a user that matches the first user.
+        """
+        if not user.id in self.__users.keys():
+            return user
+        return self.__users[user.id]
 
     def cancel(self, update, context):
         """
@@ -590,7 +622,7 @@ class DBManager:
         """
         if id == None:
             id = user.id
-        return md5(str(id+"admin").encode()).hexdigest() in self.__admins
+        return md5((str(id)+"admin").encode()).hexdigest() in self.__admins
 
     def promote_admin(self, user: TelegramController.User=None, id: str=None):
         """
