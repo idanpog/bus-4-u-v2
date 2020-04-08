@@ -1,0 +1,4 @@
+load at least 2 buses into the system, different lines.
+make 2 requests from the same user
+let 1 bus pick up the user
+EXPECTED RESULT: the user will be removed from all the stations that he has requested in the server display and both of the buses will be notified that the user is no longer there.
