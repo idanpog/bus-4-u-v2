@@ -26,9 +26,8 @@ import random
 #TODO: consider adding a remote server access
 #TODO: let the server promote users and demote them
 #TODO: go bug hunting
-#TODO: change the bg color of the bus client when he looses connection
-#fix bug: after server restart the bus doesn't know that the users have been removed
-
+#fix bug when the bus fails to connect to the server on the first time, the connect window stays open
+#fix bug when the bus reconnects to the server after server restart the server kicks the bus again.
 
 
 
@@ -168,16 +167,50 @@ class TelegramController:
         syntax /show lines
 
         """
-        #TODO: add show requests
+        #TODO: add show buses for line {number}
         #TODO: add show how long till bus
         message = update.message.text.lower().split(" ")
-        if message[1].lower() == "lines":
+        user = self.User(update)
+        if len(message) == 1:
+            output = "hey looks like you still don't know how to use this command\n" \
+                     "don't worry, I'll teach you :)\n" \
+                     "here's a list of what you can do:\n" \
+                     "/show requests - this will show you your pending requests\n" \
+                     "/show lines - this will show you the lines that are available\n" \
+                     "/show buses for line {number} - this will show you the locations of the buses in the line you've specified"
+        elif message[1].lower() == "lines":
             print("showing lines")
-            output = f"the currently available lines are: {str(self.bus_controller.show_available_lines())}"
-            update.message.reply_text(output)
+            available_lines = self.bus_controller.show_available_lines()
+            if available_lines == "None":
+                output = "there are currently no available lines"
+            else:
+                output = f"the currently available lines are: {str(available_lines)}"
+        elif message[1].lower() == "requests":
+            user = self.__find_matching_user(user)
+            if len(user.stations) == 0:
+                output ="You don't have any pending requests"
+            else:
+                output = "Your pending requests:\n"
+                for station in user.stations:
+                    output +=f"{station}\n"
+                output = output[:-1:]
+        elif message[1:-1:] == ['buses', 'for', 'line']:
+            if not message[4].isnumeric(): # checks that the value is a number
+                output = f"{message[4]} isn't a number i support, therefor I can't help you."
+            elif not (int(message[4])>0 and int(message[4]) <= 999): # checks that the number is within limits
+                output = f"sorry, {message[4]} is out of range, we only have lines within the range 1-999"
+            else: # gets here if the number is legit and everything is good
+                line_num = int(message[4])
+                if not self.bus_controller.check_line(line_num):
+                    output = "there are no available buses for that line"
+                else:
+                    output = f"the locations of the buses that are available for that line are: \n" \
+                         f"{self.bus_controller.show_buses_for_line(line_num)}"
         else:
-            update.message.reply_text("try /show lines")
-
+            print(message[1:-1:])
+            output = "couldn't recognise this command, try /show for the list of options you have for this command"
+        self.data_base.log(user, update.message.text, output)
+        user.send_message(output)
     def notify_passengers_about_incoming_bus(self, bus):
         """
         tells all the passengers waiting for that line that their bus is arriving soon.
@@ -197,10 +230,8 @@ class TelegramController:
                    output.append(user)
         return output
 
-
     def remove_everyone_from_station(self, line: int, station_num: int):
         """
-
         :param line:
         :param station_num:
         :return: a list with all the users that need to be removed.
@@ -214,7 +245,6 @@ class TelegramController:
             self.__users.pop(user.id)
         #map( )
         return users_to_remove
-
 
     def promote(self, update, context):
         """
@@ -475,7 +505,8 @@ class TelegramController:
         def __init__(self, line_number, station_number):
             self.__line_number = int(line_number)
             self.__station_number = int(station_number)
-
+        def __str__(self):
+            return f"line number: {self.__line_number},  station_number: {self.__station_number}"
         @property
         def line_number(self):
             return self.__line_number
@@ -505,7 +536,6 @@ class TelegramController:
 
         def send_message(self, text):
             """uses the userinfo (which is actually just an update) to send the user a message"""
-            print(f"sent message to {self.name}, '{text}'")
             self.__telegram_info.message.reply_text(text)
 
         @property
@@ -632,13 +662,11 @@ class DBManager:
         :return: None
         will promote the given user to the admin rank and update the cache
         """
-        print("now actually trying to promote admin")
         if id == None:
             id = user.id
         header = connect(self.__path)
         curs = header.cursor()
         encrypted_id = md5((str(id)+"admin").encode()).hexdigest()
-        print(type(encrypted_id))
         curs.execute("INSERT INTO admins(id) VALUES(?)", (encrypted_id,))
         header.commit()
         self.__update_admin_cache()
@@ -653,7 +681,6 @@ class DBManager:
         if id == None:
             id = user.id
         if self.check_admin(id=id):
-            print("here")
             header = connect(self.__path)
             curs = header.cursor()
             encrypted_id = md5((str(id) + "admin").encode()).hexdigest()
@@ -794,7 +821,6 @@ class BusController:
             try:
                 client_socket, addr = self.__new_bus_Socket.accept()
                 data = client_socket.recv(1024)
-                print(f"recieved {data}")
                 # data  = {line_number} {station} {ID}
                 line_num, station, ID = data.decode().split(" ")
                 if int(station) < BusController.MAX_STATION:
@@ -815,7 +841,6 @@ class BusController:
             self.__bus_dict[bus.line_num].append(bus)
         else:
             self.__bus_dict[bus.line_num] = [bus, ]
-        print(f"added bus {bus}")
 
     def notify_buses_about_passenger(self, line: int, station: int, number_of_people: int = None) -> None:
         """
@@ -913,7 +938,6 @@ class BusController:
 
     def __send_to_all_buses(self, line_num: int, data: str):
         """loops through all the buses in the line and sends them the given data"""
-        print(f"sending to all buses in line {line_num}, {data}")
         if line_num not in self.__bus_dict.keys():
             return
         for bus in self.__bus_dict[line_num]:
@@ -929,9 +953,6 @@ class BusController:
         tells the bus about the the passengers waiting for him at the stations.
         used when the bus first joins the system.
         """
-        print("hey")
-        print(f"in __update_Bus_about_all_station, the line is {bus.line_num}, it is in the dict {self.__stations_dict}" \
-              f"the line is in the dict {bus.line_num in self.__stations_dict}")
         if bus.line_num not in self.__stations_dict:
             data = "kick all passengers"
         else:
@@ -939,7 +960,6 @@ class BusController:
             for station_number, people_count in self.__stations_dict[bus.line_num].items():
                 data += f"{station_number}-{people_count},"
             data = data[:-1:]
-        print(data)
         bus.send_to_bus(data)
 
     def show_available_lines(self):
@@ -948,9 +968,28 @@ class BusController:
             return "None"
         return list(self.__bus_dict.keys())
 
-    def kick_all_buses(self):
-        """empties the self.__bus_dict"""
-        self.__bus_dict = {}
+    def show_buses_for_line(self, line: int) -> str:
+        """
+        shows all the buses that are in the given line
+        :param line:
+        :return: a string, that has all the buses locations in this line
+        """
+        if line not in self.__bus_dict.keys():
+            return "-None-"
+        output = ""
+        buses = self.bus_dict[line]
+        for bus in self.bus_dict[line]:
+            output +=f"station: {bus.station_num}"
+        return output
+
+    def kick_all_buses(self, reason: str = ""):
+        """
+        tells all the buses that they've been kicked
+        and then empties the self.__bus_dict
+        """
+        for line in self.__bus_dict.keys():
+            self.__send_to_all_buses(line, f"kicked out of the system for reason {reason}")
+            self.__bus_dict = {}
         print("kicked all buses from the system")
 
     def kick_all_passengers(self):
@@ -1248,7 +1287,7 @@ class GUI:
             - stop server
         """
         self.__kick_buses_button = Button(self.__main_window, text="kick all buses",
-                                          command=self.__bus_controller.kick_all_buses,
+                                          command=lambda: self.__bus_controller.kick_all_buses("kicked all buses by the console"),
                                           width=11, height=2, fg="navy", activebackground="snow3")
         self.__kick__all_passengers = Button(self.__main_window, text="kick all passengers",
                                              command=self.__kick_passengers,
