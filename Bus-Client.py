@@ -18,13 +18,12 @@ class Bus:
     PASSENGERS_PORT=8202
     HEART_BEAT_PORT=8203
     HOST = socket.gethostbyname(socket.gethostname())
-    MAX_STATION = 10
+    MAX_STATION = 14
     #HOST = "192.168.3.11" #this client's IP
-    ServerIP ="192.168.3.17" # the server's IP
+    ServerIP ="192.168.3.14" # the server's IP
     def __init__(self, gui, id, line_number, station):
         self.__id, self.__line_number, self.__station  = id, line_number, int(station)
         self.__stations = {}
-        # stores
         self.__buses = []
         self.asking_user_to_reconnect = False
         self.__gui = gui

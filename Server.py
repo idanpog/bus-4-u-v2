@@ -17,9 +17,6 @@ from tkinter.ttk import Treeview
 from time import sleep
 from hashlib import md5
 import random
-#TODO: limit the amount of request that a single user can make to 3 requests.
-#TODO: limit the a user to request only 1 station at each line.
-#TODO: when a bus picks up a user all of his requests will be removed.
 #TODO: display total session time
 #TODO: add a bar on the top of the window with some random settings
 #TODO: make it run as an exe file
@@ -29,6 +26,7 @@ import random
 #TODO: consider adding a remote server access
 #TODO: let the server promote users and demote them
 #TODO: go bug hunting
+#TODO: change the bg color of the bus client when he looses connection
 #fix bug: after server restart the bus doesn't know that the users have been removed
 
 
@@ -337,6 +335,10 @@ class TelegramController:
                                 station_to_cancel = station.station_number
                     output = "looks like you already have a request for that line so you cannot place another one\n" \
                              f"if that was a mistake you can cancel your request with /cancel {line} {station_to_cancel}"
+                elif line <=0 or line > 999:
+                    output = f"line {line}, doesn't exist. try a line withing the range of 1-999"
+                elif station<=0 or station>BusController.MAX_STATION:
+                    output = f"station {station}, doesn't exist. try a station withing the range of 1-{BusController.MAX_STATION}"
                 elif self.bus_controller.check_line(line):
                     self.bus_controller.add_person_to_the_station(line, station)
                     output = f"request accepted, the bus is notified"
@@ -463,7 +465,6 @@ class TelegramController:
         if user.id in self.__users.keys():
             self.__users[user.id].add_station(station)
         else:
-            print("added user")
             self.__users[user.id] = user
 
     class Station:
@@ -678,7 +679,7 @@ class BusController:
     HEART_BEAT_PORT = 8203
     HOST = socket.gethostbyname(socket.gethostname())
     PULSE_DELAY = 3
-    MAX_STATION = 10
+    MAX_STATION = 14
 
     def __init__(self):
         # used to accept and listen for new buses that join the system
@@ -793,12 +794,13 @@ class BusController:
             try:
                 client_socket, addr = self.__new_bus_Socket.accept()
                 data = client_socket.recv(1024)
-                print(data)
+                print(f"recieved {data}")
                 # data  = {line_number} {station} {ID}
                 line_num, station, ID = data.decode().split(" ")
                 if int(station) < BusController.MAX_STATION:
                     bus = self.Bus(addr, line_num, station, ID)
                     self.__add_bus(bus)
+                    self.__update_bus_about_all_passengers(bus)
                     self.__notify_buses_about_buses(line_num)
                 client_socket.close()
             except:
@@ -813,9 +815,6 @@ class BusController:
             self.__bus_dict[bus.line_num].append(bus)
         else:
             self.__bus_dict[bus.line_num] = [bus, ]
-        if bus.line_num in self.stations_dict.keys():
-            print("in the if station")
-            self.__update_bus_about_all_stations(bus)
         print(f"added bus {bus}")
 
     def notify_buses_about_passenger(self, line: int, station: int, number_of_people: int = None) -> None:
@@ -869,7 +868,6 @@ class BusController:
             line = bus.line_num
             station_num = bus.station_num
         if line in self.__stations_dict.keys():
-            print("bitch im in")
             thingy = self.__stations_dict[line]
             if station_num in self.__stations_dict[line].keys(): #checks if the bus picked up anybody
                 del self.__stations_dict[line][station_num] #clears the Bus controller memory from users in the certain station
@@ -926,20 +924,23 @@ class BusController:
                 self.remove_bus(bus)
                 self.__notify_buses_about_buses(bus.line_num)
 
-    def __update_bus_about_all_stations(self, bus):  # 1-3,4-1,13-0
+    def __update_bus_about_all_passengers(self, bus):  # 1-3,4-1,13-0
         """
         tells the bus about the the passengers waiting for him at the stations.
         used when the bus first joins the system.
         """
-        data = "all passengers\n"
-        try:
+        print("hey")
+        print(f"in __update_Bus_about_all_station, the line is {bus.line_num}, it is in the dict {self.__stations_dict}" \
+              f"the line is in the dict {bus.line_num in self.__stations_dict}")
+        if bus.line_num not in self.__stations_dict:
+            data = "kick all passengers"
+        else:
+            data = "all passengers\n"
             for station_number, people_count in self.__stations_dict[bus.line_num].items():
                 data += f"{station_number}-{people_count},"
             data = data[:-1:]
-            print(data)
-            bus.send_to_bus(data)
-        except Error as e:
-            pass
+        print(data)
+        bus.send_to_bus(data)
 
     def show_available_lines(self):
         """just returns a list of all the active lines in the system"""
