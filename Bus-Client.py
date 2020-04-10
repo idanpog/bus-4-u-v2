@@ -103,7 +103,7 @@ class Bus:
             # establish a connection
             Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             Socket.bind((Bus.HOST, Bus.PASSENGERS_PORT))
-            Socket.listen(2)
+            Socket.listen(1)
             try:
                 client_socket, addr = Socket.accept()
                 data = client_socket.recv(1024).decode()

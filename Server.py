@@ -785,11 +785,11 @@ class BusController:
                 client_socket, addr = self.__bus_stations_Socket.accept()
                 data = client_socket.recv(1024)
                 # data  = {line_number} {station} {ID}
-                line_num, station, ID = data.decode().split(" ")
+                line_num, station, id = data.decode().split(" ")
                 try:
                     for bus in self.__bus_dict[int(line_num)]:
-                        if bus.id == ID:
-                            if station.isnumeric():
+                        if bus.id == id:
+                            if station.isdigit():
                                 if int(station) < BusController.MAX_STATION:
                                     bus.set_station(station)
                                     self.__telegram_bot.notify_passengers_about_incoming_bus(bus)
@@ -914,7 +914,7 @@ class BusController:
                 for line in changed_lines: #launches a thread for each line in the changed lines to tell all the buses about the change.
                     if line in self.__bus_dict.keys():
                         for bus in self.__bus_dict[line]:
-                            threading.Thread(target=self.__update_bus_about_all_stations,args=(bus),
+                            threading.Thread(target=self.__update_bus_about_all_stations, args=(bus),
                                                                    name="notify other buses about a picked up user").start()
                 print("done")
 
@@ -1102,7 +1102,7 @@ class BusController:
             data = f"people {station} {passengers}"
             self.send_to_bus(data)
 
-        def send_to_bus(self, data):
+        def send_to_bus(self, data: str):
             """
             sends the bus the data you give to the command
             :param data:
