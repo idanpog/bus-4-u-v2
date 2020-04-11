@@ -16,7 +16,9 @@ from tkinter import *
 from tkinter.ttk import Treeview
 from time import sleep
 from hashlib import md5
+from copy import deepcopy
 import random
+
 #TODO: display total session time
 #TODO: add a bar on the top of the window with some random settings
 #TODO: make it run as an exe file
@@ -31,28 +33,50 @@ import random
 
 
 
+
+
+
+
+
+
 class TelegramController:
     """
     the telegram controller takes care of the telegram bot.
     receives commands from the telegram chat and can communicate with the bus controller
     """
 
-    def __init__(self, token: str, bus_controller: object):
+    def __init__(self, token: str):
         """loads the needed information for the bot, gets access to the bus_controller and loads the list of bus stations"""
-        self.data_base = DBManager()
         self.__token = token
-        self.bus_controller = bus_controller
+        self.data_base = DBManager()
+        self.__message_sender = None
+        self.bus_controller = None
         self.__updater = None
         self.__dp = None
         self.__users = dict()  # dictonary {id: user} (str: User)
         self.__gui = None
 
-    def start(self, gui: object):
+    def connect(self, bus_controller, gui, message_sender):
+        """acquires a connection to the bus controller unit"""
+        self.bus_controller = bus_controller
+        self.__gui = gui
+        self.__message_sender = message_sender
+
+    def start(self):
         """
         acquires access to the GUI
         launches the thread that takes care of all the handlers
         """
-        self.__gui = gui
+        if self.bus_controller== None:
+            print("connection to the bus controller not established yet")
+            return
+        if self.__gui == None:
+            print("connection to the GUI not established yet")
+            return
+        if self.__message_sender == None:
+            print("Connection to the message sender not established yet")
+            return
+
         update_tracking_thread = threading.Thread(target=self.__luanch_handlers, args=(),
                                                   name="Telegram Controller thread")
         update_tracking_thread.start()
@@ -372,7 +396,7 @@ class TelegramController:
                 elif self.bus_controller.check_line(line):
                     self.bus_controller.add_person_to_the_station(line, station)
                     output = f"request accepted, the bus is notified"
-                    self.bus_controller.notify_buses_about_passenger(line, station)
+                    self.__message_sender.send_line(line, update_passengers=True)
                     self.__add_to_users_dict(update)
                 else:
                     self.bus_controller.add_person_to_the_station(line, station)
@@ -609,7 +633,7 @@ class DBManager:
 
         :param user: User -  the refenced user
         :param input: str - the message that the user sent.
-        :param output:  str - the output that the server returnes
+        :param output:  str - the output that the server returns
         :return: None
         writes the new information into the storage, separated by lines that look like -----------------.
         """
@@ -689,6 +713,217 @@ class DBManager:
             self.__update_admin_cache()
 
 
+class MessagesSender:
+    """
+    have a seperated class that will manage the updates between the buses and the server,
+    the class will have a main dict (line_messages) that will have 2 flags and one str for the whole line, update_passengers, update_buses, free_text
+    another dict (bus_messages)that will be {line num: [a tuple (buses that need to be addressed, text that needs to be sent to those buses) ]
+    """
+    def __init__(self ):
+        self.__SLEEP_TIME = 3 #in seconds
+        self.__bus_dict = None
+        self.__passengers_dict = None
+        self.__global_messages = str()
+        self.__line_messages = dict()
+        """keys are line numbers, values contain an inner dict that contains 2 flags and 1 str, "update_passengers" "update_buses" "free_text" and each one will store important information"""
+        self.__bus_messages = dict()
+        """keys are line numbers, values store dicts containing the bus as a key, and the same dict as stored above (bool, bool, str)"""
+        self.__global_messages_copy = str()
+        self.__line_messages_copy = dict()
+        self.__bus_messages_copy =dict()
+         #aquired later in code
+        self.__lock_data = bool()
+        self.__socket = None
+        self.__stop = bool()
+    def connect(self, bus_dict: dict, passengers_dict: dict):
+        self.__bus_dict = bus_dict
+        self.__passengers_dict = passengers_dict
+    def start(self):
+        if self.__bus_dict == None or self.__passengers_dict == None:
+            print("can't start please pass me the needed dictionaries")
+
+        self.__global_messages = ""
+        self.__lock_data = False
+        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__stop = False
+        __main_loop = threading.Thread(target=self.__main_loop, args=(), name="bus updater")
+        __main_loop.start()
+
+
+    """
+    data senders, actually don't sent anything but add it to the memory so the __main_loop will send it later
+    the logic is 
+    check if something already exists regarding this sending group, if yes then add new data to it,
+    if no then create new data dict with default values
+    each sending group has a dictionary that stores the information that needs to be sent, the dict has 3 keys
+    "passengers": bool      - will send the sending group an update regarding the state of all the passengers
+    "buses": bool           - will send the sending group an update regarding the state of all the buses
+    "free text": str        - will just send the free text
+    """
+    def send_everyone(self, free_text: str = ""):
+        if free_text!="":
+            self.__global_messages+= free_text+ "\n"
+
+    def send_line(self, line, update_buses: bool = False, update_passengers: bool = False, free_text: str = ""):
+        """
+        adds to the line
+        :return:
+        """
+        if line in self.__line_messages.keys():
+            self.__line_messages[line]["passengers"] = self.__line_messages[line]["passengers"] or update_passengers
+            self.__line_messages[line]["buses"] = self.__line_messages[line]["buses"] or update_buses
+            if free_text != "":
+                self.__line_messages[line]["free text"] += free_text + "\n"
+
+        else:
+            self.__line_messages[line] = dict()
+            self.__line_messages[line]["passengers"] = update_passengers
+            self.__line_messages[line]["buses"] = update_buses
+            if free_text != "":
+                self.__line_messages[line] = {"free text":free_text + "\n"}
+            else:
+                self.__line_messages[line]["free text"] = ""
+                print(self.__line_messages[line])
+
+    def send_bus(self, bus, update_buses: bool = False, update_passengers: bool = False, free_text: str = ""):
+        """
+        :type bus: object
+        """
+        if bus.line_num in self.__bus_messages.keys() and bus.id in self.__bus_messages[bus.line_num].keys():
+            self.__bus_messages[bus.line_num][bus.id]["passengers"] = self.__line_messages[bus.line_num][bus.id]["passengers"] or update_passengers
+            self.__bus_messages[bus.line_num][bus.id]["buses"] = self.__line_messages[bus.line_num][bus.id]["buses"] or update_buses
+            if free_text != "":
+                self.__bus_messages[bus.line_num][bus.id]["free text"] += free_text + "\n"
+        else:
+            self.__bus_messages[bus.line_num] = dict()
+            self.__bus_messages[bus.line_num][bus.id] = dict()
+            self.__bus_messages[bus.line_num][bus.id]["passengers"] = update_passengers
+            self.__bus_messages[bus.line_num][bus.id]["buses"] = update_buses
+            if free_text != "":
+                self.__bus_messages[bus.line_num][bus.id]["free text"] = free_text + "\n"
+            else:
+                self.__bus_messages[bus.line_num][bus.id]["free text"] = ""
+        print("looks like there's a bus specific message")
+
+
+
+    """
+    Base Builders
+    organizes the information stored in the dictionaries into str that the bus clients know to translate back into dictionaries
+    """
+    def __build_update_regarding_buses(self, line: int):
+        """
+        builds out of the dictionary, in the form of # data  = "buses 1,3,7,9" the word buses and then the locations of the buses
+        :param line: the line that needs to be built
+        :return: a string
+        """
+        output = "buses "
+        for bus in self.__bus_dict[line]:
+            output +=f"{bus.station_num},"
+        return output[:-1:]
+
+    def __build_update_regarding_passengers(self,line:int):
+        """
+        builds out of the dictionary, in the form of # data  = "passengers 1-3,3-2,7-4,9-2"
+        the word passengers followed by the pairs station_number-people_count
+        :param line: the line that needs to be built
+        :return: a string
+        """
+        output = "passengers "
+        if line not in self.__passengers_dict.keys():
+            return output
+        for station_number, people_count in self.__passengers_dict[line].items():
+            output +=f"{station_number}-{people_count},"
+        return output[:-1:]
+
+
+    """
+    Group Builders
+    build the information given from the Base Builders into a string that's relevant for the group
+    the main message form looks like
+    buses 2,3,6,9\n
+    people 2-5,4-9,9-1\n
+    free_text bla bla bla 
+    
+    """
+    def __build_line_update(self, line):
+        output = ""
+        if line not in self.__line_messages_copy.keys():
+            return output
+
+        if self.__line_messages_copy[line]["passengers"]:
+            output +=self.__build_update_regarding_passengers(line)
+        if self.__line_messages_copy[line]["buses"]:
+            output +=self.__build_update_regarding_buses(line)
+        if self.__line_messages_copy[line]["free text"] != "" and self.__line_messages_copy[line]["free text"] not in self.__global_messages_copy:
+            output += self.__line_messages_copy[line]["free text"]
+        return output
+
+    def __build_bus_update(self, bus):
+        """builds a per bus layer that is added onto the line layer"""
+        output = ""
+        if bus.line_num not in self.__bus_messages_copy.keys() or bus.id not in self.__bus_messages_copy[bus.line_num].keys():
+            return output
+
+        if self.__bus_messages_copy[bus.line_num][bus.id]["passengers"] and not self.__line_messages_copy[bus.line_num]["passengers"]:
+            output += self.__build_update_regarding_passengers(bus.line_num)
+        else:
+            print(f"decieded to avoid adding information, the flags state is {self.__bus_messages_copy[bus.line_num][bus.id]['passengers']} and not {self.__line_messages_copy[bus.line_num]['passengers']}")
+        if self.__bus_messages_copy[bus.line_num][bus.id]["buses"] and not self.__line_messages_copy[bus.line_num]["buses"]:
+            output += self.__build_update_regarding_buses(bus.line_num)
+
+        if self.__bus_messages_copy[bus.line_num][bus.id]["free text"] != "" and not (
+                self.__bus_messages_copy[bus.line_num][bus.id]["free text"] in self.__line_messages_copy[bus.line_num] or
+                self.__bus_messages_copy[bus.line_num][bus.id]["free text"] in self.__line_messages_copy[bus.line_num]):
+            output += self.__bus_messages_copy[bus.line_num][bus.id]["free text"]
+        return output
+
+    def __main_loop(self):
+        """
+        builds 3 layers and adds them one onto the other
+        first layer is global messages, just text, doesn't include any logic in it
+        second layer is line messages, could be text, bus updates or passengers update, adds the needed information, doesn't overlap with the global layer
+        third layer is bus messages, could be text, bus updates or passengers update, adds the needed information, doesn't overlap with line and global layer
+        at the end sends the notification to the bus
+        """
+        while not self.__stop:
+            self.__lock_data = True
+            self.__bus_messages_copy = deepcopy(self.__bus_messages)
+            self.__line_messages_copy = deepcopy(self.__line_messages)
+            self.__global_messages_copy = deepcopy(self.__global_messages)
+            self.__bus_messages = {}
+            self.__line_messages = {}
+            self.__global_messages = ""
+            self.__lock_data = False
+
+            if self.__global_messages_copy != "":
+                global_message = self.__global_messages_copy[:-1:]
+            else:
+                global_message = self.__global_messages_copy
+
+            for line, buses in self.__bus_dict.items():
+                line_message = self.__build_line_update(line)
+                for bus in buses:
+                    bus_message= self.__build_bus_update(bus)
+                    message = global_message + "\n" +  line_message + "\n" + bus_message
+                    message = message.strip("\n")
+                    if message != "":
+                        bus.send_to_bus(message)
+
+            sleep(self.__SLEEP_TIME)
+
+        """send all buses about server shutdown"""
+        self.__shut_down()
+        print("server shut down")
+
+    def __shut_down(self):
+        """sends globally a message telling them that the server stopped"""
+
+        for line, buses in self.__bus_dict.items():
+            for bus in buses:
+                bus.send_to_bus("Server Shut Down")
+
+
 class BusController:
     """
     takes control over the buses and the communication with them
@@ -707,18 +942,6 @@ class BusController:
     HOST = socket.gethostbyname(socket.gethostname())
     PULSE_DELAY = 3
     MAX_STATION = 14
-
-    def __init__(self):
-        # used to accept and listen for new buses that join the system
-        self.__new_bus_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # used to get new updates from buses
-        self.__bus_stations_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        self.__ipv4 = (socket.gethostbyname(socket.gethostname()))
-        self.__bus_dict = {}  # self.__bus_dict[line_num] holds an array that contains all the buses
-        self.__stations_dict = {}  # self.__stations_dict[line_num][station] holds the amount of people at the station
-        # it's a dictionary in a dictionary stracture
-        self.__stop_threads = False  # used to stop all the threads in the server for proper shutdown
 
     @property
     def bus_dict(self):
@@ -745,14 +968,38 @@ class BusController:
                 count += station
         return count
 
-    def start(self, telegram_bot):
+    def __init__(self):
+        # used to accept and listen for new buses that join the system
+        self.__new_bus_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # used to get new updates from buses
+        self.__bus_stations_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__ipv4 = (socket.gethostbyname(socket.gethostname()))
+        self.__bus_dict = {}  # self.__bus_dict[line_num] holds an array that contains all the buses
+        self.__stations_dict = {}  # self.__stations_dict[line_num][station] holds the amount of people at the station
+        # it's a dictionary in a dictionary stracture
+        self.__stop_threads = False  # used to stop all the threads in the server for proper shutdown
+        self.__telegram_bot = None
+        self.__message_sender = None
+
+    def connect(self, telegram_bot, message_sender):
+        #connects between the buscontroller and the telegram bot
+        self.__telegram_bot = telegram_bot
+        self.__message_sender = message_sender
+
+    def start(self):
         """
         launches all the important threads
         new_bus_reviever - waits for connections from new buses and adds them to the system
         updates_tracker - waits for connections from buses in the system and updates the relevant information
         heart_beat - keeps track of all the buses and makes sure that there are no offline buses by kicking them
         """
-        self.__telegram_bot = telegram_bot
+        if self.__telegram_bot == None:
+            print("telegram bot connection is not set yet")
+            return
+        if self.__message_sender == None:
+            print("message sender connection is not set yet")
+            return
+        self.__message_sender.start()
         new_bus_receiver = threading.Thread(target=self.__new_bus_reciever, args=(), name="new_bus_reciever")
         new_bus_receiver.start()
         updates_tracker = threading.Thread(target=self.__track_updates, args=(), name="updates_tracker")
@@ -784,25 +1031,28 @@ class BusController:
             try:
                 client_socket, addr = self.__bus_stations_Socket.accept()
                 data = client_socket.recv(1024)
-                # data  = {line_number} {station} {ID}
-                line_num, station, id = data.decode().split(" ")
-                try:
-                    for bus in self.__bus_dict[int(line_num)]:
+                line_num, station_num, id = data.decode().split(" ")
+                if not (line_num.isdigit() and station_num.isdigit() and id.isdigit()):
+                    print("some bus tried to access the system, but he's values don't match the expectations")
+                elif int(line_num) not in self.__bus_dict.keys() or id not in map(lambda bus: bus.id, self.__bus_dict[int(line_num)]):
+                    print("an unregistered bus tried to access the system, ignored.")
+                else:
+                    relevant_bus = None
+                    for bus in self.bus_dict[int(line_num)]:
                         if bus.id == id:
-                            if station.isdigit():
-                                if int(station) < BusController.MAX_STATION:
-                                    bus.set_station(station)
-                                    self.__telegram_bot.notify_passengers_about_incoming_bus(bus)
-                                    self.try_remove_people_from_the_station(bus=bus)
-                                else: self.remove_bus(bus)
-                                self.__notify_buses_about_buses(int(line_num))
-                            else:
-                                print(f"{bus} has attempted to update his station but sent an invalid input")
+                            relevant_bus = bus
                             break
-                except Exception as e:
-                    print(e)
-                    print("an unregistered bus tried to access the system, ignored")
-            except:
+                    print(f"the chosen bus is: {relevant_bus}")
+                    print(f"the station num is {station_num}")
+                    relevant_bus.set_station(station_num)
+                    self.__telegram_bot.notify_passengers_about_incoming_bus(relevant_bus)
+                    self.__try_remove_people_from_the_station(bus=relevant_bus)
+                    if int(station_num) > BusController.MAX_STATION:
+                        self.remove_bus(relevant_bus)
+                    self.__message_sender.send_line(int(line_num), update_buses=True)
+
+            except Exception as e:
+                print(f"exception in __track_updates: {e}")
                 print("closed track_updates")
 
     def __new_bus_reciever(self):
@@ -826,11 +1076,12 @@ class BusController:
                 if int(station) < BusController.MAX_STATION:
                     bus = self.Bus(addr, line_num, station, ID)
                     self.__add_bus(bus)
-                    self.__update_bus_about_all_passengers(bus)
-                    self.__notify_buses_about_buses(line_num)
+                    self.__message_sender.send_bus(bus, update_passengers=True)
+                    self.__message_sender.send_line(bus.line_num, update_buses=True)
                 client_socket.close()
             except:
                 print("closed the new_bus_reciever thread")
+        print("closed the new_bus_reciever thread")
 
     def __add_bus(self, bus):
         """
@@ -842,23 +1093,10 @@ class BusController:
         else:
             self.__bus_dict[bus.line_num] = [bus, ]
 
-    def notify_buses_about_passenger(self, line: int, station: int, number_of_people: int = None) -> None:
-        """
-        a method that is used to notify all the buses in the line about an update
-        regarding the location of the users.
-        can recieve a line + station and it will look for the amount of people waiting at the station in the memory
-        if you have removed the certain station out of the memory bcause there are no people waiting you can pass it
-        a third parameter number_of_people=0 and it won't look for it in the memory and just tell the buses that there
-        are 0 people waiting at the stations.
-        """
-        if number_of_people != None:
-            data = f"people {station} {number_of_people}"
-        else:
-            data = f"people {station} {self.__stations_dict[line][station]}"
-        self.__send_to_all_buses(line, data)
-
     def add_person_to_the_station(self, line, station):
         """
+        used only by outer classes that need to update the bus controller regarding a new user
+        for example the telegram controller
         adds the user into the self.__stations_dict.
         :param line: the line that the person waits for
         :param station: the stations that the person waits at
@@ -881,86 +1119,32 @@ class BusController:
                 del self.__stations_dict[station.line_number][station.station_number]
                 if len(self.__stations_dict[station.line_number]) == 0:
                     del self.__stations_dict[station.line_number]
-                self.notify_buses_about_passenger(station.line_number, station.station_number, number_of_people=0)
             elif self.__stations_dict[station.line_number][station.station_number] > 1:
                 self.__stations_dict[station.line_number][station.station_number] -= 1
-                self.notify_buses_about_passenger(station.line_number, station.station_number)
+            self.__message_sender.send_line(station.line_number, update_passengers=True)
         else:
             print("whoops an error, looks like the current station doesn't exit and there's no person waiting for it.")
 
-    def try_remove_people_from_the_station(self, line: int = None, station_num: int = None, bus = None):
+    def __try_remove_people_from_the_station(self, line: int = None, station_num: int = None, bus = None):
         if bus!=None:
             line = bus.line_num
             station_num = bus.station_num
-        if line in self.__stations_dict.keys():
-            thingy = self.__stations_dict[line]
-            if station_num in self.__stations_dict[line].keys(): #checks if the bus picked up anybody
-                del self.__stations_dict[line][station_num] #clears the Bus controller memory from users in the certain station
-                if len(self.__stations_dict[line]) == 0:
-                    del self.__stations_dict[line]
-                #launches a thread that waits one sec to notify the buses about the change in people, avoids collisions in TCP connections this way
-                update_buses_thread = threading.Thread(target=self.__notify_about_people_after_a_second, args=(line, station_num, 0),
-                                                          name="notify about people after a second")
-                update_buses_thread.start()
-                people_that_need_to_be_kicked = self.__telegram_bot.remove_everyone_from_station(line, station_num)
-                # a list of Users that have been waiting at the station
-                changed_lines = []
-                for user in people_that_need_to_be_kicked: #kick them from the memory of the bus controller
-                    for station in user.stations:
-                        if station.line_number!=line:
-                            self.remove_person_from_the_station(station)
-                            if station.line_number not in changed_lines and station.station_number != station_num:
-                                changed_lines.append(station.line_number)
-                for line in changed_lines: #launches a thread for each line in the changed lines to tell all the buses about the change.
-                    if line in self.__bus_dict.keys():
-                        for bus in self.__bus_dict[line]:
-                            threading.Thread(target=self.__update_bus_about_all_stations, args=(bus),
-                                                                   name="notify other buses about a picked up user").start()
-                print("done")
-
-    def __notify_about_people_after_a_second(self, line, station, number_of_people=0):
-        sleep(1)
-        self.notify_buses_about_passenger(line, station, number_of_people=number_of_people)
-
-    def __notify_buses_about_buses(self, line_num):
-        """
-        sends the buses an update about all the buses in the same line as they are
-        in the form of buses 3,5,23,8 when the numbers are the locations of the buses.
-        """
-        if not self.check_line(line_num):
+        if line not in self.__stations_dict.keys() or station_num not in self.__stations_dict[line].keys():
             return
-        data = "buses "
-        line_num = int(line_num)
-        for bus in self.__bus_dict[line_num]:
-            data += str(bus.station_num) + ","
-        data = data[0:-1:]
-        self.__send_to_all_buses(line_num, data)
 
-    def __send_to_all_buses(self, line_num: int, data: str):
-        """loops through all the buses in the line and sends them the given data"""
-        if line_num not in self.__bus_dict.keys():
-            return
-        for bus in self.__bus_dict[line_num]:
-            try:
-                bus.send_to_bus(data)
-            except:
-                print(f"{bus} is unavailable, kicked out of the system")
-                self.remove_bus(bus)
-                self.__notify_buses_about_buses(bus.line_num)
-
-    def __update_bus_about_all_passengers(self, bus):  # 1-3,4-1,13-0
-        """
-        tells the bus about the the passengers waiting for him at the stations.
-        used when the bus first joins the system.
-        """
-        if bus.line_num not in self.__stations_dict:
-            data = "kick all passengers"
-        else:
-            data = "all passengers\n"
-            for station_number, people_count in self.__stations_dict[bus.line_num].items():
-                data += f"{station_number}-{people_count},"
-            data = data[:-1:]
-        bus.send_to_bus(data)
+        del self.__stations_dict[line][station_num] #clears the Bus controller memory from users in the certain station
+        if len(self.__stations_dict[line]) == 0:
+            del self.__stations_dict[line]
+        #launches a thread that waits one sec to notify the buses about the change in people, avoids collisions in TCP connections this way
+        self.__message_sender.send_line(line, update_passengers=True)
+        people_that_need_to_be_kicked = self.__telegram_bot.remove_everyone_from_station(line, station_num)
+        # a list of Users that have been waiting at the station
+        changed_lines = []
+        for user in people_that_need_to_be_kicked: #kick them from the memory of the bus controller
+            for station in user.stations:
+                if station.line_number!=line:
+                    self.remove_person_from_the_station(station)
+        print("done")
 
     def show_available_lines(self):
         """just returns a list of all the active lines in the system"""
@@ -987,9 +1171,8 @@ class BusController:
         tells all the buses that they've been kicked
         and then empties the self.__bus_dict
         """
-        for line in self.__bus_dict.keys():
-            self.__send_to_all_buses(line, f"kicked out of the system for reason {reason}")
-            self.__bus_dict = {}
+        self.__bus_dict = {}
+        self.__message_sender.send_global(f"kicked out of the system for reason {reason}")
         print("kicked all buses from the system")
 
     def kick_all_passengers(self):
@@ -1000,7 +1183,7 @@ class BusController:
         changed_lines = self.__stations_dict.keys()
         for line in changed_lines:
             if line in self.__bus_dict:
-                self.__send_to_all_buses(line, "kick all passengers")
+                self.__message_sender.send_line(line, update_passengers=True)
         self.__stations_dict = {}
 
     def __check_duplicates(self):
@@ -1064,9 +1247,6 @@ class BusController:
         print(f"removed: {bus}")
         if len(self.__bus_dict[bus.line_num]) == 0:
             del self.__bus_dict[bus.line_num]
-            print("removed the whole line")
-        else:
-            self.__notify_buses_about_buses(bus.line_num)
 
     class Bus:
         """
@@ -1348,12 +1528,16 @@ class GUI:
 def main():
     """start the server"""
 
-    myserver = BusController()
-    steve = TelegramController("990223452:AAHrln4bCzwGpkR2w-5pqesPHpuMjGKuJUI", myserver)
-    gui = GUI(myserver, steve)
+    bus_controller = BusController()
+    steve = TelegramController("990223452:AAHrln4bCzwGpkR2w-5pqesPHpuMjGKuJUI")
+    gui = GUI(bus_controller, steve)
+    message_sender = MessagesSender()
 
-    myserver.start(steve)
-    steve.start(gui)
+    steve.connect(bus_controller=bus_controller, gui=gui, message_sender=message_sender)
+    bus_controller.connect(telegram_bot=steve, message_sender=message_sender)
+    message_sender.connect(bus_dict=bus_controller.bus_dict, passengers_dict=bus_controller.stations_dict)
+    bus_controller.start()
+    steve.start()
     gui.start()
 
 

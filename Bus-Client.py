@@ -12,6 +12,7 @@ from tkinter.ttk import Treeview
 # TODO: add custom fonts and better looking icons
 # TODO: add some better formating at the finish display so if the bus session time was above a minute it'll display everything
 # TODO: add a display that will show the bus if he needs to stop or not, make it change colors
+# TODO: fix all the access modifiers
 class Bus:
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
@@ -33,6 +34,10 @@ class Bus:
         self.__starting_time = None
         self.__connected = None
         self.__kicked = False
+        self.__data_handler = {"buses": self.__proccess_buses_chunk,
+                               "passengers": self.__proccess_passengers_chunk,
+                               "free_text": self.__proccess_free_text_chunk}
+
 
     @property
     def connected(self):
@@ -107,41 +112,44 @@ class Bus:
             try:
                 client_socket, addr = Socket.accept()
                 data = client_socket.recv(1024).decode()
-                print(data)
-                # data  = {"people"} {station} {number_of_people}
-                # data  = {"buses"} {bus1,bus2,bus3....,busn}
-                if data.split(" ")[0] == "people":
-                    type_of_input, station, number_of_people = data.split(" ")
-                    if int(number_of_people) != 0:
-                        self.__stations[int(station)] = int(number_of_people)
-                    else:
-                        del self.__stations[int(station)]
-                    print(f"{number_of_people} are waiting at station number {station}, ID:{self.__id}")
-
-                elif data.split(" ")[0] == "buses":
-                    self.__buses = data.split(" ")[1].split(",")
-                    map_object = map(int, self.__buses)
-                    self.__buses = list(map_object)
-                elif data.split("\n")[0] == "all passengers":  # 1-3,4-1,13-0
-                    data = data.split("\n")[1].split(",")
-                    for station in data:
-                        number_of_people = int(station[2])
-                        station_number = int(station[0])
-                        self.__stations[int(station_number)] = int(number_of_people)
-                elif "kicked out of the system" in data:
-                    print("well looks like i've been kicked...")
-                    self.__kicked = True
-                    reason = " ".join(data.split(" ")[5::])
-                    print(f"kicked for reason {reason}")
-                    self.__gui.display_kicked(reason)
-                elif data == "kick all passengers":
-                    self.__stations = {}
-                else:
-                    print(f"got some unkown piece of information here, check this out {data}")
+                print(f"just got some new data, look '{data}'")
+                data_chunks = data.split("\n")
+                for data_chunk in data_chunks:
+                    data_chunk = data_chunk.split(" ")
+                    chunk_type=data_chunk[0]
+                    self.__data_handler[chunk_type](data_chunk[1])
             except Exception as e:
-                print(e)
+                print(f"exception in __track_updates: {e}")
+
 
             Socket.close()
+    def __proccess_buses_chunk(self, chunk:str):
+        chunks = chunk.split(",")
+        int_chunks = map(int, chunks) #converts the data from str to int
+        self.__buses = list(int_chunks)#makes sure that the data is a list
+
+    def __proccess_passengers_chunk(self, chunk:str):
+        """one of the 3 mini functions that are used to process data received from the server"""
+        self.__stations = {}
+        if len(chunk) == 0:
+            return
+
+        for station in chunk.split(","):
+            station_number, people_count = station.split("-")
+            self.__stations[int(station_number)] = int(people_count)
+
+    def __proccess_free_text_chunk(self, chunk:str):
+        if "kicked out of the server for:" in chunk:
+            #example data, kicked out of the server for:server shutdown
+            self.__kicked = True
+            reason = chunk.split(":")[1]
+            self.__gui.display_kicked(reason)
+        elif "message for the driver" in chunk:
+            message = chunk.split(":")[1]
+            print("driver recieved a message")
+        else:
+            print(f"got some unknown piece of free text '{chunk}'")
+
 
     def next_station(self):
         if int(self.__station) + 2 > Bus.MAX_STATION:  # stop the bus client when he reaches his final station
