@@ -18,6 +18,7 @@ from time import sleep
 from hashlib import md5
 from copy import deepcopy
 import random
+from time import time
 
 #TODO: display total session time
 #TODO: add a bar on the top of the window with some random settings
@@ -28,8 +29,12 @@ import random
 #TODO: consider adding a remote server access
 #TODO: let the server promote users and demote them
 #TODO: go bug hunting
+#TODO: when a bus connects to the server, update him regarding how many stations there are
+#TODO: when the heartbeat mechanism starts, it should update the bus regarding how long each pulse is.
 #fix bug when the bus fails to connect to the server on the first time, the connect window stays open
 #fix bug when the bus reconnects to the server after server restart the server kicks the bus again.
+#fix bug when a bus is kicked, after the reconnect he'll be kicked again.
+
 
 
 
@@ -559,7 +564,7 @@ class TelegramController:
             self.__stations.remove(station)
 
         def send_message(self, text):
-            """uses the userinfo (which is actually just an update) to send the user a message"""
+            """uses the user info (which is actually just an update) to send the user a message"""
             self.__telegram_info.message.reply_text(text)
 
         @property
@@ -577,7 +582,8 @@ class TelegramController:
         @property
         def name(self):
             """returnes the full name of the user, for example "Idan pog" """
-            return self.__telegram_info.message.from_user.name
+            name = self.__telegram_info.message.from_user.name
+            return name[0].upper()+name[1::]
 
 
 class DBManager:
@@ -719,11 +725,12 @@ class MessagesSender:
     the class will have a main dict (line_messages) that will have 2 flags and one str for the whole line, update_passengers, update_buses, free_text
     another dict (bus_messages)that will be {line num: [a tuple (buses that need to be addressed, text that needs to be sent to those buses) ]
     """
+    SLEEP_TIME = 2  # in seconds  Must be smaller than the heartbeat sleep time
     def __init__(self ):
-        self.__SLEEP_TIME = 3 #in seconds
+
         self.__bus_dict = None
         self.__passengers_dict = None
-        self.__global_messages = str()
+        self.__global_messages = dict()
         self.__line_messages = dict()
         """keys are line numbers, values contain an inner dict that contains 2 flags and 1 str, "update_passengers" "update_buses" "free_text" and each one will store important information"""
         self.__bus_messages = dict()
@@ -731,15 +738,15 @@ class MessagesSender:
         self.__global_messages_copy = str()
         self.__line_messages_copy = dict()
         self.__bus_messages_copy =dict()
+        self.__buses_to_kick = list()
          #aquired later in code
         self.__lock_data = bool()
         self.__socket = None
         self.__stop = bool()
-    def connect(self, bus_dict: dict, passengers_dict: dict):
-        self.__bus_dict = bus_dict
-        self.__passengers_dict = passengers_dict
+    def connect(self, bus_controller):
+        self.__bus_controller = bus_controller
     def start(self):
-        if self.__bus_dict == None or self.__passengers_dict == None:
+        if self.__bus_controller == None:
             print("can't start please pass me the needed dictionaries")
 
         self.__global_messages = ""
@@ -759,52 +766,79 @@ class MessagesSender:
     "passengers": bool      - will send the sending group an update regarding the state of all the passengers
     "buses": bool           - will send the sending group an update regarding the state of all the buses
     "free text": str        - will just send the free text
+    "kick reason": str      - will just send the kick reason with a prefix "kicked for:{reason}"
     """
-    def send_everyone(self, free_text: str = ""):
-        if free_text!="":
-            self.__global_messages+= free_text+ "\n"
+    def send_global(self, free_text: str = "", kick_reason =""):
+        while self.__lock_data:
+            sleep(0.01)
 
-    def send_line(self, line, update_buses: bool = False, update_passengers: bool = False, free_text: str = ""):
+        if free_text!="":
+            self.__global_messages["free text"]+= free_text+ "\n"
+
+        if kick_reason != "":
+            self.__global_messages["kick reason"] += kick_reason + "\n"
+            bus_dict_copy = deepcopy(self.__bus_controller.bus_dict)
+            for buses in bus_dict_copy.values():
+                for bus in buses:
+                    self.__buses_to_kick.append(bus)
+        print(f"finished send global, freetext: {self.__global_messages['free text']}, kickreason:{self.__global_messages['kick reason']}")
+
+    def send_line(self, line, update_buses: bool = False, update_passengers: bool = False, free_text: str = "", kick_reason:str = ""):
         """
         adds to the line
         :return:
         """
+        while self.__lock_data:
+            sleep(0.01)
         if line in self.__line_messages.keys():
             self.__line_messages[line]["passengers"] = self.__line_messages[line]["passengers"] or update_passengers
             self.__line_messages[line]["buses"] = self.__line_messages[line]["buses"] or update_buses
             if free_text != "":
                 self.__line_messages[line]["free text"] += free_text + "\n"
+            if kick_reason!= "":
+                buses_copy = deepcopy(self.__bus_dict[line])
+                for bus in buses_copy:
+                    if bus not in self.__buses_to_kick:
+                        self.__buses_to_kick.append(bus)
+                self.__line_messages[line]["kick reason"] += kick_reason + "\n"
+
 
         else:
             self.__line_messages[line] = dict()
             self.__line_messages[line]["passengers"] = update_passengers
             self.__line_messages[line]["buses"] = update_buses
+            self.__line_messages[line]["free text"] = ""
+            self.__line_messages[line]["kick reason"] = ""
             if free_text != "":
-                self.__line_messages[line] = {"free text":free_text + "\n"}
-            else:
-                self.__line_messages[line]["free text"] = ""
-                print(self.__line_messages[line])
+                self.__line_messages[line]["free text"] = free_text + "\n"
+            if kick_reason != "":
+                self.__line_messages[line]["kick reason"] = free_text + "\n"
 
-    def send_bus(self, bus, update_buses: bool = False, update_passengers: bool = False, free_text: str = ""):
+    def send_bus(self, bus, update_buses: bool = False, update_passengers: bool = False, free_text: str = "", kick_reason:str = ""):
         """
         :type bus: object
         """
+        while self.__lock_data:
+            sleep(0.01)
         if bus.line_num in self.__bus_messages.keys() and bus.id in self.__bus_messages[bus.line_num].keys():
             self.__bus_messages[bus.line_num][bus.id]["passengers"] = self.__line_messages[bus.line_num][bus.id]["passengers"] or update_passengers
             self.__bus_messages[bus.line_num][bus.id]["buses"] = self.__line_messages[bus.line_num][bus.id]["buses"] or update_buses
             if free_text != "":
                 self.__bus_messages[bus.line_num][bus.id]["free text"] += free_text + "\n"
+            if kick_reason!= "":
+                self.__bus_messages[bus.line_num][bus.id]["kick reason"] += kick_reason + "\n"
         else:
             self.__bus_messages[bus.line_num] = dict()
             self.__bus_messages[bus.line_num][bus.id] = dict()
             self.__bus_messages[bus.line_num][bus.id]["passengers"] = update_passengers
             self.__bus_messages[bus.line_num][bus.id]["buses"] = update_buses
+            self.__bus_messages[bus.line_num][bus.id]["free text"] = ""
+            self.__bus_messages[bus.line_num][bus.id]["kick reason"] = ""
             if free_text != "":
                 self.__bus_messages[bus.line_num][bus.id]["free text"] = free_text + "\n"
-            else:
-                self.__bus_messages[bus.line_num][bus.id]["free text"] = ""
-        print("looks like there's a bus specific message")
 
+            if kick_reason != "":
+                self.__bus_messages[bus.line_num][bus.id]["kick reason"] = kick_reason + "\n"
 
 
     """
@@ -817,9 +851,11 @@ class MessagesSender:
         :param line: the line that needs to be built
         :return: a string
         """
-        output = "buses "
-        for bus in self.__bus_dict[line]:
+        print("building update regarding buses")
+        output = "buses:"
+        for bus in self.__bus_controller.bus_dict[line]:
             output +=f"{bus.station_num},"
+            print(f"current output is {output}")
         return output[:-1:]
 
     def __build_update_regarding_passengers(self,line:int):
@@ -829,11 +865,11 @@ class MessagesSender:
         :param line: the line that needs to be built
         :return: a string
         """
-        output = "passengers "
-        if line not in self.__passengers_dict.keys():
+        output = "passengers:"
+        if line not in self.__bus_controller.stations_dict.keys():
             return output
-        for station_number, people_count in self.__passengers_dict[line].items():
-            output +=f"{station_number}-{people_count},"
+        for station_number, people_count in self.__bus_controller.stations_dict[line].items():
+            print(output)
         return output[:-1:]
 
 
@@ -846,17 +882,25 @@ class MessagesSender:
     free_text bla bla bla 
     
     """
+    def __build_global_update(self):
+
+        if self.__global_messages["free text"] != "":
+            return f"free text:{self.__global_messages['free text']}\n"
+        return ""
+
     def __build_line_update(self, line):
         output = ""
         if line not in self.__line_messages_copy.keys():
             return output
 
         if self.__line_messages_copy[line]["passengers"]:
-            output +=self.__build_update_regarding_passengers(line)
+            output +=self.__build_update_regarding_passengers(line) +"\n"
         if self.__line_messages_copy[line]["buses"]:
-            output +=self.__build_update_regarding_buses(line)
-        if self.__line_messages_copy[line]["free text"] != "" and self.__line_messages_copy[line]["free text"] not in self.__global_messages_copy:
-            output += self.__line_messages_copy[line]["free text"]
+            output +=self.__build_update_regarding_buses(line) +"\n"
+        if self.__line_messages_copy[line]["kick reason"]!="" and self.__line_messages_copy[line]["kick_reason"] not in self.__global_messages_copy["kick reason"]:
+            output +=f"kicked for:{self.__line_messages_copy[line]['kick reason']}" + "\n"
+        if self.__line_messages_copy[line]["free text"] != "" and self.__line_messages_copy[line]["free text"] not in self.__global_messages_copy["free text"]:
+            output += "free text:" + self.__line_messages_copy[line]["free text"]+"\n"
         return output
 
     def __build_bus_update(self, bus):
@@ -866,16 +910,16 @@ class MessagesSender:
             return output
 
         if self.__bus_messages_copy[bus.line_num][bus.id]["passengers"] and not self.__line_messages_copy[bus.line_num]["passengers"]:
-            output += self.__build_update_regarding_passengers(bus.line_num)
-        else:
-            print(f"decieded to avoid adding information, the flags state is {self.__bus_messages_copy[bus.line_num][bus.id]['passengers']} and not {self.__line_messages_copy[bus.line_num]['passengers']}")
+            output += self.__build_update_regarding_passengers(bus.line_num) +"\n"
+
         if self.__bus_messages_copy[bus.line_num][bus.id]["buses"] and not self.__line_messages_copy[bus.line_num]["buses"]:
-            output += self.__build_update_regarding_buses(bus.line_num)
+            output += self.__build_update_regarding_buses(bus.line_num)+"\n"
 
         if self.__bus_messages_copy[bus.line_num][bus.id]["free text"] != "" and not (
-                self.__bus_messages_copy[bus.line_num][bus.id]["free text"] in self.__line_messages_copy[bus.line_num] or
-                self.__bus_messages_copy[bus.line_num][bus.id]["free text"] in self.__line_messages_copy[bus.line_num]):
-            output += self.__bus_messages_copy[bus.line_num][bus.id]["free text"]
+                self.__bus_messages_copy[bus.line_num][bus.id]["free text"] in self.__line_messages_copy[bus.line_num]["free text"] or
+                self.__bus_messages_copy[bus.line_num][bus.id]["free text"] in self.__global_messages_copy["free text"]):
+            output += "free text:"+ self.__bus_messages_copy[bus.line_num][bus.id]["free text"] +"\n"
+
         return output
 
     def __main_loop(self):
@@ -893,24 +937,32 @@ class MessagesSender:
             self.__global_messages_copy = deepcopy(self.__global_messages)
             self.__bus_messages = {}
             self.__line_messages = {}
-            self.__global_messages = ""
+            self.__global_messages = {"kick reason": "", "free text": ""}
+            buses_to_kick_copy = deepcopy(self.__buses_to_kick)
+            self.__buses_to_kick = list()
             self.__lock_data = False
 
-            if self.__global_messages_copy != "":
-                global_message = self.__global_messages_copy[:-1:]
-            else:
-                global_message = self.__global_messages_copy
+            for bus in buses_to_kick_copy: #handles the buses that need to be kicked
+                message = "kicked for reason:"+self.__global_messages_copy["kick reason"]
+                if bus.line_num in self.__line_messages_copy.keys():
+                    message +=  self.__line_messages_copy[bus.line_num]["kick reason"]
+                if bus.line_num in self.__line_messages_copy.keys() and bus.id in self.__bus_messages_copy[bus.line_num].keys():
+                    message += self.__bus_messages_copy[bus.line_num][bus.id]["kick reason"]
+                print(f"sending message{message.strip()}")
+                bus.send_to_bus(message.strip())
 
-            for line, buses in self.__bus_dict.items():
+            global_message = self.__build_global_update()
+            for line, buses in self.__bus_controller.bus_dict.items():
                 line_message = self.__build_line_update(line)
                 for bus in buses:
                     bus_message= self.__build_bus_update(bus)
-                    message = global_message + "\n" +  line_message + "\n" + bus_message
+                    message = global_message + line_message + bus_message
                     message = message.strip("\n")
                     if message != "":
                         bus.send_to_bus(message)
 
-            sleep(self.__SLEEP_TIME)
+
+            sleep(MessagesSender.SLEEP_TIME)
 
         """send all buses about server shutdown"""
         self.__shut_down()
@@ -1042,12 +1094,11 @@ class BusController:
                         if bus.id == id:
                             relevant_bus = bus
                             break
-                    print(f"the chosen bus is: {relevant_bus}")
-                    print(f"the station num is {station_num}")
+
                     relevant_bus.set_station(station_num)
                     self.__telegram_bot.notify_passengers_about_incoming_bus(relevant_bus)
                     self.__try_remove_people_from_the_station(bus=relevant_bus)
-                    if int(station_num) > BusController.MAX_STATION:
+                    if int(station_num) >= BusController.MAX_STATION:
                         self.remove_bus(relevant_bus)
                     self.__message_sender.send_line(int(line_num), update_buses=True)
 
@@ -1144,7 +1195,6 @@ class BusController:
             for station in user.stations:
                 if station.line_number!=line:
                     self.remove_person_from_the_station(station)
-        print("done")
 
     def show_available_lines(self):
         """just returns a list of all the active lines in the system"""
@@ -1171,8 +1221,9 @@ class BusController:
         tells all the buses that they've been kicked
         and then empties the self.__bus_dict
         """
+        self.__message_sender.send_global(kick_reason=reason)
         self.__bus_dict = {}
-        self.__message_sender.send_global(f"kicked out of the system for reason {reason}")
+
         print("kicked all buses from the system")
 
     def kick_all_passengers(self):
@@ -1202,6 +1253,8 @@ class BusController:
             for another_bus in buses[idx + 1::]:
                 if bus.id == another_bus.id:
                     print(f"found duplicates, {bus}\n\n {another_bus}")
+                    self.__message_sender.send_bus(bus, kick_reason="found another bus with he same id")
+                    self.__message_sender.send_bus(another_bus, kick_reason="found another bus with he same id")
                     self.remove_bus(bus)
                     self.remove_bus(another_bus)
 
@@ -1212,8 +1265,10 @@ class BusController:
         cycles the command pulse for all the buses every few seconds
         """
         while not self.__stop_threads:
+            start_time = time()
             self.__pulse_all()
-            self.__check_duplicates()
+           #self.__check_duplicates()
+            #print(f"total pulse time = {time()-start_time} seconds")
             sleep(BusController.PULSE_DELAY)
         print("stopped the heartbeats")
 
@@ -1222,9 +1277,11 @@ class BusController:
         in order to complete the heartbeat mechanism"""
         if len(self.__bus_dict) == 0:
             return
-        for line in self.__bus_dict.values():
+        bus_dict_copy = self.__bus_dict.copy()
+        for line in bus_dict_copy.values():
             for bus in line:
-                threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.id}").start()
+                #threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.id}").start()
+                self.__indevidual_pulse(bus)
 
     def __indevidual_pulse(self, bus):
         """
@@ -1303,6 +1360,7 @@ class BusController:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(BusController.PULSE_DELAY * 0.8)
             output = True
+            start_time = time()
             try:
                 s.connect((self.__address[0], BusController.HEART_BEAT_PORT))
                 data = "Check".encode()
@@ -1312,9 +1370,13 @@ class BusController:
                     print(f"bus had the wrong ID\nwas supposed to be {self.__id}, but received {data}")
                     output = False
             # listen for an answer
-            except:
+            except Exception as e:
+                print(f"exception in check_up (heart_beat) look:{e}")
                 print(f"something went wrong, couldn't establish connection with {self.__address}")
                 output = False
+            finally:
+                #print(f"waited {time()-start_time} seconds for respond")
+                pass
             s.close()
             return output
 
@@ -1467,7 +1529,7 @@ class GUI:
             - stop server
         """
         self.__kick_buses_button = Button(self.__main_window, text="kick all buses",
-                                          command=lambda: self.__bus_controller.kick_all_buses("kicked all buses by the console"),
+                                          command=lambda: self.__bus_controller.kick_all_buses(reason="kicked all buses by the console"),
                                           width=11, height=2, fg="navy", activebackground="snow3")
         self.__kick__all_passengers = Button(self.__main_window, text="kick all passengers",
                                              command=self.__kick_passengers,
@@ -1535,7 +1597,7 @@ def main():
 
     steve.connect(bus_controller=bus_controller, gui=gui, message_sender=message_sender)
     bus_controller.connect(telegram_bot=steve, message_sender=message_sender)
-    message_sender.connect(bus_dict=bus_controller.bus_dict, passengers_dict=bus_controller.stations_dict)
+    message_sender.connect(bus_controller=bus_controller)
     bus_controller.start()
     steve.start()
     gui.start()

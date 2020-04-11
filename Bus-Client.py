@@ -13,6 +13,8 @@ from tkinter.ttk import Treeview
 # TODO: add some better formating at the finish display so if the bus session time was above a minute it'll display everything
 # TODO: add a display that will show the bus if he needs to stop or not, make it change colors
 # TODO: fix all the access modifiers
+# TODO: check why after being kicked the bus will get kicked again upon a reconnect
+# fix bug, after reconnecting from a kick the display color won't change back to white.
 class Bus:
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
@@ -20,6 +22,7 @@ class Bus:
     HEART_BEAT_PORT = 8203
     HOST = socket.gethostbyname(socket.gethostname())
     MAX_STATION = 14
+    PULSE_DELAY = 5
     # HOST = "192.168.3.11" #this client's IP
     ServerIP = "192.168.3.14"  # the server's IP
 
@@ -36,7 +39,8 @@ class Bus:
         self.__kicked = False
         self.__data_handler = {"buses": self.__proccess_buses_chunk,
                                "passengers": self.__proccess_passengers_chunk,
-                               "free_text": self.__proccess_free_text_chunk}
+                               "free": self.__proccess_free_text_chunk,
+                               "kicked for reason": self.__proccess_kick_chunk}
 
 
     @property
@@ -78,7 +82,7 @@ class Bus:
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         Socket.bind((self.HOST, self.HEART_BEAT_PORT))
         Socket.listen(1)
-        Socket.settimeout(4)
+        Socket.settimeout(Bus.PULSE_DELAY+1)
         while not self.stop:
             try:
                 client_socket, addr = Socket.accept()
@@ -114,16 +118,21 @@ class Bus:
                 data = client_socket.recv(1024).decode()
                 print(f"just got some new data, look '{data}'")
                 data_chunks = data.split("\n")
+                print(data_chunks)
                 for data_chunk in data_chunks:
-                    data_chunk = data_chunk.split(" ")
-                    chunk_type=data_chunk[0]
-                    self.__data_handler[chunk_type](data_chunk[1])
+                    data_chunk = data_chunk.split(":")
+                    chunk_type = data_chunk[0]
+                    chunk_information = data_chunk[1]
+                    print(f"chunk type {chunk_type}")
+                    self.__data_handler[chunk_type](chunk_information)
             except Exception as e:
                 print(f"exception in __track_updates: {e}")
 
 
             Socket.close()
+
     def __proccess_buses_chunk(self, chunk:str):
+
         chunks = chunk.split(",")
         int_chunks = map(int, chunks) #converts the data from str to int
         self.__buses = list(int_chunks)#makes sure that the data is a list
@@ -138,24 +147,22 @@ class Bus:
             station_number, people_count = station.split("-")
             self.__stations[int(station_number)] = int(people_count)
 
+
     def __proccess_free_text_chunk(self, chunk:str):
-        if "kicked out of the server for:" in chunk:
-            #example data, kicked out of the server for:server shutdown
-            self.__kicked = True
-            reason = chunk.split(":")[1]
-            self.__gui.display_kicked(reason)
-        elif "message for the driver" in chunk:
+        print("processing the kick message")
+        if "message for the driver" in chunk:
             message = chunk.split(":")[1]
-            print("driver recieved a message")
+            print(f"driver recieved a message{message}")
         else:
             print(f"got some unknown piece of free text '{chunk}'")
 
+    def __proccess_kick_chunk(self, chunk:str):
+        print("in kick")
+        self.__kicked = True
+        self.__gui.display_kicked(chunk)
 
     def next_station(self):
-        if int(self.__station) + 2 > Bus.MAX_STATION:  # stop the bus client when he reaches his final station
-            self.stop = True
-            self.__gui.display_finished()
-            return
+
 
         if self.__connected:
             try:
@@ -167,8 +174,14 @@ class Bus:
             except:
                 self.__connected = False
                 self.asking_user_to_reconnect = False
+
+            if int(self.__station) + 1 > Bus.MAX_STATION:  # stop the bus client when he reaches his final station
+                self.stop = True
+                self.__gui.display_finished()
+                return
         else:
             print("user trying to send update the server about change in the station but i am offline.")
+
 
     def __send_to_server(self, data):
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
