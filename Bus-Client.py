@@ -16,9 +16,10 @@ from tkinter.ttk import Treeview
 # TODO: add a display that will show the bus if he needs to stop or not, make it change colors
 # TODO: add buses chat
 # TODO: fix all the access modifiers
-# TODO: make the bus not display his own location.
 # TODO: move buttons
+# TODO: make the server broadcasts display something even when empty
 # TODO: make the buttons update on they're own (make use of dat fresh StringVar())
+
 class Bus:
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
@@ -63,17 +64,12 @@ class Bus:
     @property
     def session_time(self):
         session_time = int(time.time() - self.__starting_time)
+        local_time = time.gmtime(session_time)
+        return time.strftime('%H:%M:%S', local_time)
+        #return output
 
-        seconds = session_time % 60
-        minutes = int((session_time % 3600) / 60)
-        hours = int(session_time / 3600)
-        if hours != 0:
-            output = f"{hours} hours, {minutes} minutes and {seconds} seconds."
-        elif minutes != 0:
-            output = f"{minutes} minutes and {seconds} seconds."
-        else:
-            output = f"{seconds} seconds."
-        return output
+
+
 
     @property
     def next_station_people_count(self):
@@ -93,6 +89,7 @@ class Bus:
         if len(self.__buses) != 0:
             biggest = max(biggest, max(self.__buses))
         return biggest
+
     def start(self):
         try:
             self.__connect_to_server()
@@ -163,8 +160,11 @@ class Bus:
     def __proccess_buses_chunk(self, chunk:str):
 
         chunks = chunk.split(",")
+
         int_chunks = map(int, chunks) #converts the data from str to int
         self.__buses = list(int_chunks)#makes sure that the data is a list
+        self.__buses.remove(self.__station) #removes the bus itself from his own display
+
 
     def __proccess_passengers_chunk(self, chunk:str):
         """one of the 3 mini functions that are used to process data received from the server"""
@@ -178,10 +178,10 @@ class Bus:
 
     def __proccess_free_text_chunk(self, chunk:str):
         print(f"driver recieved a message{chunk}")
-        self.__server_free_text_messages.append({"text":chunk, "time": time.time()})
+        for message in chunk.split(","):
+            self.__server_free_text_messages.append({"text":message, "time": time.time()})
         if len(self.__server_free_text_messages) > 3:
-            self.__server_free_text_messages = self.__server_free_text_messages[1::]
-            print("removed, the old message")
+            self.__server_free_text_messages = self.__server_free_text_messages[-5::]
 
     def __proccess_kick_chunk(self, chunk:str):
         print("in kick")
@@ -208,6 +208,11 @@ class Bus:
         else:
             print("user trying to send update the server about change in the station but i am offline.")
 
+    def send_free_text(self, free_text):
+        data = f"{self.__line_number} {self.__station} {self.__id}"
+        data +=f" message:{free_text}"
+        self.__send_to_server(data)
+
     def __send_to_server(self, data):
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         Socket.connect((Bus.ServerIP, Bus.STATIONS_PORT))
@@ -222,8 +227,9 @@ class Bus:
         for station, count in self.__stations.items():
             list[station - 1] = str(count)
 
-        for station in self.__buses:
+        for station in self.__buses:  #makes sure that the bus won't display itself twice
             list[station - 1] = "bus"
+
         list[self.__station - 1] = "me"
 
         return list
@@ -258,6 +264,7 @@ class GUI:
         self.__passengers_count_stringvar = None
         self.__buses_count_stringvar =None
         self.__server_broadbast_stringvar = None
+        self.__session_time_stringvar = None
 
         if self.__line == None:
             sys.exit("Ended by user")
@@ -267,19 +274,21 @@ class GUI:
         self.__bus.start()
         self.__headlines = [str(x) for x in range(1, self.__bus.max_number_of_stations + 1)]
         self.__window = Tk()
-        self.__window.geometry("472x600")
+        self.__window.geometry("472x700")
         # window.geometry("472x350")
-        self.__window.iconbitmap(f'images\\childhood dream for project.ico')  # put stuff to icon
+        self.__window.iconbitmap(f'images bus\\childhood dream for project.ico')  # put stuff to icon
         self.__window.title("Bus Client")
         self.__window.resizable(OFF, OFF)
         self.__passengers_count_stringvar = StringVar()
         self.__buses_count_stringvar =StringVar()
         self.__server_broadbast_stringvar = StringVar()
+        self.__session_time_stringvar = StringVar()
         self.__tree = self.__create_table()
         self.__place_titles()
         self.__update_table()
         self.__place_buttons()
-        self.__place_statistics_labels()
+        self.__place_labels()
+        self.__place_free_text_section()
         self.__update_image()
         self.__loop()
 
@@ -321,6 +330,7 @@ class GUI:
     def __update_labels(self):
         self.__passengers_count_stringvar.set("Number of people waiting: " + str(self.__bus.count_people()))
         self.__buses_count_stringvar.set("Number of buses working for the same line: " + str(self.__bus.count_buses()))
+        self.__session_time_stringvar.set(f"Session time: {self.__bus.session_time}")
         server_broadbast_text = ""
         for message in self.__bus.server_free_text_messages:
             if time.time() - message["time"] > 10:
@@ -331,7 +341,6 @@ class GUI:
 
         if len(server_broadbast_text)>0:
             server_broadbast_text = server_broadbast_text[:-1:]
-        print(f"updated broadcast label: {server_broadbast_text}")
         self.__server_broadbast_stringvar.set(server_broadbast_text)
 
     def __loop(self):
@@ -347,21 +356,41 @@ class GUI:
         except Exception as e:
             print(f"Done looping because: {e}")
 
-    def __place_statistics_labels(self):
+    def __place_labels(self):
         # statistics labels
         self.__passengers_count_stringvar.set("Number of people waiting: " + str(self.__bus.count_people()))
         self.__buses_count_stringvar.set("Number of buses working for the same line: " + str(self.__bus.count_buses()))
         self.__server_broadbast_stringvar.set("Empty")
 
-        Label(self.__window, textvariable=self.__passengers_count_stringvar).place(x=10, y=550)
-        Label(self.__window, textvariable=self.__buses_count_stringvar).place(x=10, y=570)
-        Label(self.__window, textvariable=self.__server_broadbast_stringvar).place(x=30, y=400)
+        Label(self.__window, textvariable=self.__passengers_count_stringvar).place(x=10, y=650)
+        Label(self.__window, textvariable=self.__buses_count_stringvar).place(x=10, y=670)
+        Label(self.__window, textvariable=self.__server_broadbast_stringvar).place(x=30, y=350)
 
         # labels about myself
         line_label = Label(self.__window, text="my line: " + str(self.__line), fg="gray")
-        line_label.place(x=370, y=550)
+        line_label.place(x=350, y=530)
         id_label = Label(self.__window, text="my ID: " + str(self.__id), fg="gray")
-        id_label.place(x=370, y=570)
+        id_label.place(x=350, y=550)
+        session_time_label = Label(self.__window, textvariable=self.__session_time_stringvar, fg="gray")
+        session_time_label.place(x=350, y=570)
+
+    def __place_free_text_section(self):
+        self.__message_label = Label(self.__window, text = "Send important messages to the admins")
+        self.__message_entry = Entry(self.__window, width = 53)
+        self.__message_to_server_button = Button(self.__window,height=2, width = 22, text="Send message to server",command= self.__send_free_text_to_server)
+
+        self.__message_label.place(x=100, y=510)
+        self.__message_entry.place(x=20, y=535)
+        self.__message_to_server_button.place(x=100, y=555)
+
+        print("placed broadcast section")
+
+    def __send_free_text_to_server(self):
+        data = self.__message_entry.get()
+
+        self.__message_entry.delete(0, 'end')
+        print(f"broad casting data: {data}")
+        self.__bus.send_free_text(data)
 
     def __place_titles(self):
         display_live_updates = Label(self.__window, text="Live buses and the passengers locations")
@@ -369,7 +398,7 @@ class GUI:
         statistics_label = Label(self.__window, text="Statistics ")
         display_live_updates.place(x = 150, y= 10)
         server_broadcasts.place(x = 180, y = 320)
-        statistics_label.place(x = 220, y = 520)
+        statistics_label.place(x = 220, y = 600)
 
     def __update_table(self):
         self.__tree.config(columns=self.__headlines)
@@ -385,11 +414,11 @@ class GUI:
 
     def __update_image(self):
         if self.__bus.next_station_people_count==0:
-            self.img_go = ImageTk.PhotoImage(PIL.Image.open(r"Images\nobody is waiting.png"))
+            self.img_go = ImageTk.PhotoImage(PIL.Image.open(r"Images bus\nobody is waiting.png"))
             self.go_label = Label(self.__window, image=self.img_go)
             self.go_label.place(x=0, y= 160)
         else:
-            self.img_stop = ImageTk.PhotoImage(PIL.Image.open(r"Images\stop at the next station-idan.png"))
+            self.img_stop = ImageTk.PhotoImage(PIL.Image.open(r"Images bus\stop at the next station-idan.png"))
             self.go_label = Label(self.__window, image=self.img_stop)
             self.go_label.place(x=0, y=160)
 
@@ -402,7 +431,7 @@ class GUI:
         self.__window["bg"] = "gray"
         self.__disconnected_window = Tk()
         self.__disconnected_window.geometry("300x150")
-        self.__disconnected_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
+        self.__disconnected_window.iconbitmap(r'Images bus\childhood dream for project.ico')  # put stuff to icon
         self.__disconnected_window.title("Disconnected")
         self.__disconnected_window.resizable(OFF, OFF)
         self.__disconnected_window["bg"] = "red"
@@ -523,7 +552,7 @@ class GUI:
     def config_first_data(self):
         window = Tk()
         window.geometry("350x250")
-        window.iconbitmap(f'images\\childhood dream for project.ico')  # put stuff to icon
+        window.iconbitmap(f'images bus\\childhood dream for project.ico')  # put stuff to icon
         window.title("user setup")
         window.resizable(OFF, OFF)
 
@@ -558,15 +587,7 @@ class GUI:
             error_label.place(x=20, y=20)
 
 
-# ID = str(random.randint(1, 999999))
-# line_number = 14
-# station = 1
 
 gui = GUI()
 gui.start()
-#
-# bus1 = Bus(GUI.ask_basic_data())
-# bus1.start()
-#
-# busGUI = GUI(bus1)
-# busGUI.start()
+
