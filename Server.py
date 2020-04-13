@@ -30,11 +30,18 @@ from time import time
 #TODO: let the server promote users and demote them
 #TODO: go bug hunting
 #TODO: when a bus connects to the server, update him regarding how many stations there are
-#TODO: when the heartbeat mechanism starts, it should update the bus regarding how long each pulse is.
-#fix bug when the bus fails to connect to the server on the first time, the connect window stays open
-#fix bug when the bus reconnects to the server after server restart the server kicks the bus again.
-#fix bug when a bus is kicked, after the reconnect he'll be kicked again.
-
+#TODO: when the heartbeat mechanism starts, it should update the bus regarding how long each pulse is
+#TODO: mark unactive lines that were requested
+#TODO: support both directions for a line
+#TODO: change the kick passengers btn
+#TODO: find a nicer way to tell the user that they've been kicked
+#TODO: notify the users when a bus leaves the system
+#TODO: don't let buses join with wrong station numbers
+#TODO: add an option to brodccast to users
+#TODO: make an anti fat finger for the all buttons
+#TODO: make the text in the exit btn bigger
+#TODO: don't let users do /promote me
+#fix bug, send a few free text messages at the same poll and then the bus client doesn't know what to do with them
 
 
 
@@ -495,16 +502,29 @@ class TelegramController:
         then deletes all the users from the users list. and tells the bus controller as well to kick all the users
         """
         for user in self.__users.values():
-            user.send_message(
-                f"hello {user.name.split(' ')[0]}, it looks like you've been kicked out of the system for: {reason}")
+
+            if reason == "kicked all passengers by an admin":  # the ususal case, made a standart message so users won't be nervous
+                user.send_message(
+                    f"Hello {user.name.split(' ')[0]}, your request has been removed.\n"
+                    f"Simply place another one if it's still relevant.\n\nBest regards, Bus4U team")
+            else:  # in case of something spacial
+                print(f"reason '{reason}'")
+                user.send_message(
+                    f"hello {user.name.split(' ')[0]}, it looks like you've been kicked out of the system for: {reason}")
         self.__users = {}
         self.bus_controller.kick_all_passengers()
 
     def __kick_passenger(self, user, reason):
         """internal command, kicks a {user} for a {reason}"""
         try:
-            user.send_message(
-                f"hello {user.name.split(' ')[0]}, it looks like you've been kicked out of the system for: {reason}")
+            if reason == "kicked all passengers by an admin": #the ususal case, made a standart message so users won't be nervous
+                user.send_message(
+                    f"Hello {user.name.split(' ')[0]}, your request has been removed.\n"
+                    f"Simply place another one if it's still relevant.\n\nBest regards, Bus4U team")
+            else: #in case of something spacial
+                print(f"reason '{reason}'")
+                user.send_message(
+                    f"hello {user.name.split(' ')[0]}, it looks like you've been kicked out of the system for: {reason}")
             del self.__users[user.id]
         except Error as e:
             print("the person you're trying to delete doesn't exist.")
@@ -749,7 +769,7 @@ class MessagesSender:
         if self.__bus_controller == None:
             print("can't start please pass me the needed dictionaries")
 
-        self.__global_messages = ""
+        self.__global_messages = {"kick reason": "", "free text": ""}
         self.__lock_data = False
         self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.__stop = False
@@ -781,7 +801,6 @@ class MessagesSender:
             for buses in bus_dict_copy.values():
                 for bus in buses:
                     self.__buses_to_kick.append(bus)
-        print(f"finished send global, freetext: {self.__global_messages['free text']}, kickreason:{self.__global_messages['kick reason']}")
 
     def send_line(self, line, update_buses: bool = False, update_passengers: bool = False, free_text: str = "", kick_reason:str = ""):
         """
@@ -870,6 +889,7 @@ class MessagesSender:
             return output
         for station_number, people_count in self.__bus_controller.stations_dict[line].items():
             print(output)
+            output+=f"{station_number}-{people_count},"
         return output[:-1:]
 
 
@@ -884,8 +904,8 @@ class MessagesSender:
     """
     def __build_global_update(self):
 
-        if self.__global_messages["free text"] != "":
-            return f"free text:{self.__global_messages['free text']}\n"
+        if self.__global_messages_copy["free text"] != "":
+            return f"free text:{self.__global_messages_copy['free text']}\n"
         return ""
 
     def __build_line_update(self, line):
@@ -970,7 +990,7 @@ class MessagesSender:
 
     def __shut_down(self):
         """sends globally a message telling them that the server stopped"""
-
+        #TODO: finish this function as intended
         for line, buses in self.__bus_dict.items():
             for bus in buses:
                 bus.send_to_bus("Server Shut Down")
@@ -1397,22 +1417,27 @@ class GUI:
         - Number of buses in the system
         - Number of people waiting
     """
-    def __init__(self, bus_controller, telegram_controller):
+    def __init__(self, bus_controller, telegram_controller, message_sender):
         """initializes all the important information"""
         self.__telegram_controller = telegram_controller
         self.__bus_controller = bus_controller
+        self.__message_sender = message_sender
         self.__main_window = Tk()
         self.__main_display_table = None
         self.remote_stop = False
         self.__headlines = [" "] + [str(x) for x in range(1, self.find_table_length() + 1)]
+
+        self.__broadcast_entry = None
+        self.__broadcast_label = None
+        self.__broadcast_button = None
 
     def start(self):
         """
         starts the main window as self.__main_window, shows the table, places the buttons, and at the end
         starts a loops that just keeps updeting the table and the statistics
         """
-        self.__main_window.geometry("700x500")
-        self.__main_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        self.__main_window.geometry("700x600")
+        self.__main_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
         self.__main_window.title("buses")
         scrollX = Scrollbar(self.__main_window, orient=HORIZONTAL)
         scrollY = Scrollbar(self.__main_window, orient=VERTICAL)
@@ -1424,6 +1449,7 @@ class GUI:
         scrollX.config(command=self.__main_display_table.xview)
         scrollX.place(x=0, y=480, width=480)
         self.__place_buttons()
+        self.__place_broadcast_section()
         for headline in self.__headlines:
             self.__main_display_table.heading(headline, text=headline)
             self.__main_display_table.column(headline, anchor="center", width=35)
@@ -1536,10 +1562,27 @@ class GUI:
                                              width=11, height=2, fg="navy", activebackground="snow3")
         self.__stop_button = Button(self.__main_window, text="stop server", command=self.__stop,
                                     width=11, height=2, fg="red", background="floral white", activebackground="gray18")
-
         self.__kick_buses_button.place(x=500, y=400)
         self.__kick__all_passengers.place(x=595, y=400)
         self.__stop_button.place(x=595, y=450)
+
+    def __place_broadcast_section(self):
+        self.__broadcast_label = Label(self.__main_window, text = "Broadcast important messages")
+        self.__broadcast_entry = Entry(self.__main_window)
+        self.__broadcast_button = Button(self.__main_window,text="Send broadcast to buses",command= self.__send_broad_cast_to_buses)
+        # TODO: mess with those numbers so it'll look good
+        self.__broadcast_label.place(x=10, y=520)
+        self.__broadcast_entry.place(x=10, y=550)
+        self.__broadcast_button.place(x= 400, y = 520)
+        print("placed broadcast section")
+
+    def __send_broad_cast_to_buses(self):
+
+        data = self.__broadcast_entry.get()
+        self.__broadcast_entry.delete(0, 'end')
+        print(f"broad casting data: {data}")
+        self.__message_sender.send_global(free_text=data)
+        #TODO: fill this function
 
     def __display_buses_location(self):
         """
@@ -1592,8 +1635,9 @@ def main():
 
     bus_controller = BusController()
     steve = TelegramController("990223452:AAHrln4bCzwGpkR2w-5pqesPHpuMjGKuJUI")
-    gui = GUI(bus_controller, steve)
     message_sender = MessagesSender()
+    gui = GUI(bus_controller, steve, message_sender)
+
 
     steve.connect(bus_controller=bus_controller, gui=gui, message_sender=message_sender)
     bus_controller.connect(telegram_bot=steve, message_sender=message_sender)

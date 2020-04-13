@@ -4,6 +4,8 @@ import random
 import socket
 import threading
 import tkinter
+from PIL import ImageTk
+import PIL.Image
 import time
 from tkinter import *
 from tkinter.ttk import Treeview
@@ -12,9 +14,11 @@ from tkinter.ttk import Treeview
 # TODO: add custom fonts and better looking icons
 # TODO: add some better formating at the finish display so if the bus session time was above a minute it'll display everything
 # TODO: add a display that will show the bus if he needs to stop or not, make it change colors
+# TODO: add buses chat
 # TODO: fix all the access modifiers
-# TODO: check why after being kicked the bus will get kicked again upon a reconnect
-# fix bug, after reconnecting from a kick the display color won't change back to white.
+# TODO: make the bus not display his own location.
+# TODO: move buttons
+# TODO: make the buttons update on they're own (make use of dat fresh StringVar())
 class Bus:
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
@@ -25,6 +29,7 @@ class Bus:
     PULSE_DELAY = 5
     # HOST = "192.168.3.11" #this client's IP
     ServerIP = "192.168.3.14"  # the server's IP
+
 
     def __init__(self, gui, id, line_number, station):
         self.__id, self.__line_number, self.__station = id, line_number, int(station)
@@ -39,8 +44,10 @@ class Bus:
         self.__kicked = False
         self.__data_handler = {"buses": self.__proccess_buses_chunk,
                                "passengers": self.__proccess_passengers_chunk,
-                               "free": self.__proccess_free_text_chunk,
+                               "free text": self.__proccess_free_text_chunk,
                                "kicked for reason": self.__proccess_kick_chunk}
+        self.__server_free_text_messages = list(dict()) #{"text": str(), "time": time.time()}
+        self.__connection_established_time = None
 
 
     @property
@@ -52,6 +59,7 @@ class Bus:
     @property
     def total_people_count(self):
         return self.__total_people_count
+
     @property
     def session_time(self):
         session_time = int(time.time() - self.__starting_time)
@@ -67,6 +75,24 @@ class Bus:
             output = f"{seconds} seconds."
         return output
 
+    @property
+    def next_station_people_count(self):
+        if int(self.__station+1) in self.__stations.keys():
+            return self.__stations[self.__station+1]
+
+        return 0
+
+    @property
+    def server_free_text_messages(self):
+        return self.__server_free_text_messages
+    @property
+    def max_number_of_stations(self):
+        biggest = max(self.__station, 10)
+        if (len(self.__stations) != 0):
+            biggest = max(max(self.__stations.keys()), biggest)
+        if len(self.__buses) != 0:
+            biggest = max(biggest, max(self.__buses))
+        return biggest
     def start(self):
         try:
             self.__connect_to_server()
@@ -90,12 +116,15 @@ class Bus:
                 if data == "Check":
                     client_socket.send(str(self.__id).encode())
             except:
-                if self.__connected == True and not self.__kicked:
-                    print("lost connection to the server")
-                    self.__connected = False
-                    self.__gui.display_disconnected()
+                if time.time() -self.__connection_established_time < Bus.PULSE_DELAY+1:
+                    print("connection is too young, skipping this heartbeat")
                 else:
-                    print("still don't have connection to the server")
+                    if self.__connected == True and not self.__kicked:
+                        print("lost connection to the server")
+                        self.__connected = False
+                        self.__gui.display_disconnected()
+                    else:
+                        print("still don't have connection to the server")
 
     def __connect_to_server(self):
         data = f"{self.__line_number} {self.__station} {self.__id}"
@@ -104,6 +133,7 @@ class Bus:
         Socket.connect((Bus.ServerIP, Bus.NEW_CONNECTION_PORT))
         Socket.send(data.encode())
         Socket.close()
+        self.__connection_established_time = time.time()
         self.__connected = True
         self.__kicked = False
 
@@ -128,7 +158,6 @@ class Bus:
             except Exception as e:
                 print(f"exception in __track_updates: {e}")
 
-
             Socket.close()
 
     def __proccess_buses_chunk(self, chunk:str):
@@ -147,14 +176,12 @@ class Bus:
             station_number, people_count = station.split("-")
             self.__stations[int(station_number)] = int(people_count)
 
-
     def __proccess_free_text_chunk(self, chunk:str):
-        print("processing the kick message")
-        if "message for the driver" in chunk:
-            message = chunk.split(":")[1]
-            print(f"driver recieved a message{message}")
-        else:
-            print(f"got some unknown piece of free text '{chunk}'")
+        print(f"driver recieved a message{chunk}")
+        self.__server_free_text_messages.append({"text":chunk, "time": time.time()})
+        if len(self.__server_free_text_messages) > 3:
+            self.__server_free_text_messages = self.__server_free_text_messages[1::]
+            print("removed, the old message")
 
     def __proccess_kick_chunk(self, chunk:str):
         print("in kick")
@@ -162,7 +189,6 @@ class Bus:
         self.__gui.display_kicked(chunk)
 
     def next_station(self):
-
 
         if self.__connected:
             try:
@@ -182,21 +208,11 @@ class Bus:
         else:
             print("user trying to send update the server about change in the station but i am offline.")
 
-
     def __send_to_server(self, data):
         Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         Socket.connect((Bus.ServerIP, Bus.STATIONS_PORT))
         Socket.send(data.encode())
         Socket.close()
-
-    @property
-    def max_number_of_stations(self):
-        biggest = max(self.__station, 10)
-        if (len(self.__stations) != 0):
-            biggest = max(max(self.__stations.keys()), biggest)
-        if len(self.__buses) != 0:
-            biggest = max(biggest, max(self.__buses))
-        return biggest
 
     def display_passengers(self):
         list = [""]
@@ -232,13 +248,17 @@ class Bus:
 
 
 class GUI:
-
+    __PATH_TO_IMAGES = 'Images\\'
     def __init__(self):
         self.__line, self.__id, self.__station = None, None, None
         self.__bus = None
         self.__headlines = None
         self.config_first_data()
         self.asking_to_reconnect = False
+        self.__passengers_count_stringvar = None
+        self.__buses_count_stringvar =None
+        self.__server_broadbast_stringvar = None
+
         if self.__line == None:
             sys.exit("Ended by user")
 
@@ -247,15 +267,22 @@ class GUI:
         self.__bus.start()
         self.__headlines = [str(x) for x in range(1, self.__bus.max_number_of_stations + 1)]
         self.__window = Tk()
-        self.__window.geometry("472x250")
+        self.__window.geometry("472x600")
         # window.geometry("472x350")
-        self.__window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        self.__window.iconbitmap(f'images\\childhood dream for project.ico')  # put stuff to icon
         self.__window.title("Bus Client")
         self.__window.resizable(OFF, OFF)
+        self.__passengers_count_stringvar = StringVar()
+        self.__buses_count_stringvar =StringVar()
+        self.__server_broadbast_stringvar = StringVar()
         self.__tree = self.__create_table()
-        self.__update_Table()
+        self.__place_titles()
+        self.__update_table()
         self.__place_buttons()
+        self.__place_statistics_labels()
+        self.__update_image()
         self.__loop()
+
         self.__window.mainloop()
         self.stop()
 
@@ -277,8 +304,9 @@ class GUI:
         tree = Treeview(self.__window, show="headings", columns=self.__headlines, xscrollcommand=scrollX.set)
         scrollX.config(command=tree.xview)
         scrollX.place(x=1, y=81, width=470)
-        table_headline_label = Label(self.__window, text="buses and passengers locations")
-        table_headline_label.place(x=150, y=0)
+        #table_headline_label = Label(self.__window, text="buses and passengers locations")
+        #table_headline_label.place(x=150, y=0)
+
         return tree
 
     def __place_buttons(self):
@@ -290,31 +318,60 @@ class GUI:
                                             width=10, height=2, activebackground="gray", fg="red")
         self.__stop_button.place(x=380, y=100)
 
+    def __update_labels(self):
+        self.__passengers_count_stringvar.set("Number of people waiting: " + str(self.__bus.count_people()))
+        self.__buses_count_stringvar.set("Number of buses working for the same line: " + str(self.__bus.count_buses()))
+        server_broadbast_text = ""
+        for message in self.__bus.server_free_text_messages:
+            if time.time() - message["time"] > 10:
+
+                print(f"message was too old, removed: {time.strftime('%H:%M:%S', time.localtime(message['time']))}: {message['text']} \n")
+                self.__bus.server_free_text_messages.remove(message)
+            server_broadbast_text +=f"{time.strftime('%H:%M:%S', time.localtime(message['time']))}: {message['text']} \n"
+
+        if len(server_broadbast_text)>0:
+            server_broadbast_text = server_broadbast_text[:-1:]
+        print(f"updated broadcast label: {server_broadbast_text}")
+        self.__server_broadbast_stringvar.set(server_broadbast_text)
+
     def __loop(self):
         if self.__bus.stop == True:
             return
         try:
             self.__headlines = [str(x) for x in range(1, self.__bus.max_number_of_stations + 1)]
-            self.__update_Table()
+            self.__update_table()
+            self.__update_image()
             self.__update_labels()
+            #self.__update_server_broadcasts()
             self.__after_job = self.__window.after(500, self.__loop)
-        except:
-            print("Done looping")
+        except Exception as e:
+            print(f"Done looping because: {e}")
 
-    def __update_labels(self):
+    def __place_statistics_labels(self):
         # statistics labels
-        passengers_label = Label(self.__window, text="Number of people waiting: " + str(self.__bus.count_people()))
-        passengers_label.place(x=10, y=170)
-        buses_label = Label(self.__window,
-                            text="Number of buses working for the same line: " + str(self.__bus.count_buses()))
-        buses_label.place(x=10, y=200)
+        self.__passengers_count_stringvar.set("Number of people waiting: " + str(self.__bus.count_people()))
+        self.__buses_count_stringvar.set("Number of buses working for the same line: " + str(self.__bus.count_buses()))
+        self.__server_broadbast_stringvar.set("Empty")
+
+        Label(self.__window, textvariable=self.__passengers_count_stringvar).place(x=10, y=550)
+        Label(self.__window, textvariable=self.__buses_count_stringvar).place(x=10, y=570)
+        Label(self.__window, textvariable=self.__server_broadbast_stringvar).place(x=30, y=400)
+
         # labels about myself
         line_label = Label(self.__window, text="my line: " + str(self.__line), fg="gray")
-        line_label.place(x=370, y=170)
+        line_label.place(x=370, y=550)
         id_label = Label(self.__window, text="my ID: " + str(self.__id), fg="gray")
-        id_label.place(x=370, y=200)
+        id_label.place(x=370, y=570)
 
-    def __update_Table(self):
+    def __place_titles(self):
+        display_live_updates = Label(self.__window, text="Live buses and the passengers locations")
+        server_broadcasts = Label(self.__window, text="Server Broad Casts ")
+        statistics_label = Label(self.__window, text="Statistics ")
+        display_live_updates.place(x = 150, y= 10)
+        server_broadcasts.place(x = 180, y = 320)
+        statistics_label.place(x = 220, y = 520)
+
+    def __update_table(self):
         self.__tree.config(columns=self.__headlines)
         for headline in self.__headlines:
             self.__tree.heading(headline, text=headline)
@@ -326,6 +383,18 @@ class GUI:
         self.__tree.insert("", END, values=data)
         self.__tree.place(x=0, y=30, width=472, height=50)
 
+    def __update_image(self):
+        if self.__bus.next_station_people_count==0:
+            self.img_go = ImageTk.PhotoImage(PIL.Image.open(r"Images\nobody is waiting.png"))
+            self.go_label = Label(self.__window, image=self.img_go)
+            self.go_label.place(x=0, y= 160)
+        else:
+            self.img_stop = ImageTk.PhotoImage(PIL.Image.open(r"Images\stop at the next station-idan.png"))
+            self.go_label = Label(self.__window, image=self.img_stop)
+            self.go_label.place(x=0, y=160)
+
+        #.pack(side="bottom", fill="both", expand="yes")
+
     def display_disconnected(self):
         # a display that pops when the bus loses connection
         if self.__bus.stop == True:
@@ -333,7 +402,7 @@ class GUI:
         self.__window["bg"] = "gray"
         self.__disconnected_window = Tk()
         self.__disconnected_window.geometry("300x150")
-        self.__disconnected_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        self.__disconnected_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
         self.__disconnected_window.title("Disconnected")
         self.__disconnected_window.resizable(OFF, OFF)
         self.__disconnected_window["bg"] = "red"
@@ -355,7 +424,7 @@ class GUI:
         self.__window["bg"] = "gray"
         self.__kicked_window = Tk()
         self.__kicked_window.geometry("500x150")
-        self.__kicked_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        self.__kicked_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
         self.__kicked_window.title("kicked")
         self.__kicked_window.resizable(OFF, OFF)
         self.__kicked_window["bg"] = "yellow"
@@ -363,7 +432,7 @@ class GUI:
                                                                    "hit the button to try to reconnect", bg="yellow")
         self.__oops_label.place(x=30, y=30)
         self.__reconnect_button = tkinter.Button(self.__kicked_window, text="ReConnect",
-                                                 command=lambda: self.__try_to_reconnect("kicked"), width=28,
+                                                 command=lambda: self.__try_to_reconnect("Kicked"), width=28,
                                                  height=3, activebackground="gray")
         self.__reconnect_button.place(x=50, y=90)
         self.__kicked_window.mainloop()
@@ -376,7 +445,7 @@ class GUI:
 
         self.__finished_window = Tk()
         self.__finished_window.geometry("300x250")
-        self.__finished_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        self.__finished_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
         self.__finished_window.title("Finished")
         self.__finished_window.resizable(OFF, OFF)
         self.__finished_window["bg"] = "White"
@@ -407,6 +476,8 @@ class GUI:
         if self.__bus.reconnect():
             if status == "PostLogin" or status == "Kicked":
                 self.__window["bg"] = 'SystemButtonFace'#sets the window color back to normal after reconnecting
+            else:
+                print(f"not changing back the color, the status is {status}")
             if status =="PostLogin" or status == "PreLogin":
                 self.__disconnected_window.destroy()
             else:
@@ -425,7 +496,7 @@ class GUI:
         # a display that pops when the bus fails to establish the first connection
         self.__disconnected_window = Tk()
         self.__disconnected_window.geometry("250x150")
-        self.__disconnected_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        self.__disconnected_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
         self.__disconnected_window.title("Error")
         self.__disconnected_window.resizable(OFF, OFF)
         main_label = Label(self.__disconnected_window, text="Failed to connect to the server")
@@ -452,7 +523,7 @@ class GUI:
     def config_first_data(self):
         window = Tk()
         window.geometry("350x250")
-        window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+        window.iconbitmap(f'images\\childhood dream for project.ico')  # put stuff to icon
         window.title("user setup")
         window.resizable(OFF, OFF)
 
@@ -478,7 +549,7 @@ class GUI:
         except:
             error_window = Tk()
             error_window.geometry("200x80")
-            error_window.iconbitmap('childhood dream for project.ico')  # put stuff to icon
+            error_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
             error_window.title("Error")
             error_window.resizable(OFF, OFF)
             error_window.configure(bg="red")
