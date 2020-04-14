@@ -1,0 +1,35 @@
+Bus client side
+	- opening screen DONE
+	- enter data DONE
+	- failed to establish connection
+	- failed again to establish connection
+	- lost connection
+	- failed to reestablish connection
+	- kicked out of the server
+	- main window
+	- send message to server btn
+	- Next station btn
+	- exit btn
+	- reconnect btn
+	- finish btn
+	- nobody is waiting img
+	- stop at the next station img
+	- low profile logo DONE
+	- icon
+
+Server side
+	-opening screen DONE
+	- main window 
+	
+	- exit btn
+	- kick people btn
+	- kick buses btn
+
+	- demote btn
+	- promote btn
+
+	- send broadcast to buses
+	- send broadcast to passengers
+
+	- low profile logo DONE
+	- icon DONE

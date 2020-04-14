@@ -308,6 +308,16 @@ class GUI:
             print("main window already closed.")
         sys.exit("closed by user")
 
+    def __loading_screen(self):
+        loading_window = Tk()
+        loading_window.geometry("740x740")
+        loading_window.title("Loading")
+        loading_window.resizable(OFF, OFF)
+        loading_img = ImageTk.PhotoImage(PIL.Image.open(r"Images bus\loading screen.png"))
+        loading_label = Label(loading_window, image=loading_img, bg ="#192b3d")
+        loading_label.place(x=0, y=0)
+        loading_window.after(1000, lambda: loading_window.destroy())
+        loading_window.mainloop()
     def __create_table(self):
         scrollX = Scrollbar(self.__window, orient=HORIZONTAL)
         tree = Treeview(self.__window, show="headings", columns=self.__headlines, xscrollcommand=scrollX.set)
@@ -317,7 +327,6 @@ class GUI:
         #table_headline_label.place(x=150, y=0)
 
         return tree
-
     def __place_buttons(self):
         self.__next_button = tkinter.Button(self.__window, text="Next Station", command=self.__bus.next_station,
                                             width=25, height=2, activebackground="gray")
@@ -453,7 +462,7 @@ class GUI:
         self.__window["bg"] = "gray"
         self.__kicked_window = Tk()
         self.__kicked_window.geometry("500x150")
-        self.__kicked_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
+        self.__kicked_window.iconbitmap(r'Images bus\childhood dream for project.ico')  # put stuff to icon
         self.__kicked_window.title("kicked")
         self.__kicked_window.resizable(OFF, OFF)
         self.__kicked_window["bg"] = "yellow"
@@ -525,7 +534,7 @@ class GUI:
         # a display that pops when the bus fails to establish the first connection
         self.__disconnected_window = Tk()
         self.__disconnected_window.geometry("250x150")
-        self.__disconnected_window.iconbitmap(r'Images\childhood dream for project.ico')  # put stuff to icon
+        self.__disconnected_window.iconbitmap(r'Images bus\childhood dream for project.ico')  # put stuff to icon
         self.__disconnected_window.title("Error")
         self.__disconnected_window.resizable(OFF, OFF)
         main_label = Label(self.__disconnected_window, text="Failed to connect to the server")
@@ -552,12 +561,16 @@ class GUI:
     def config_first_data(self):
         window = Tk()
         window.geometry("350x250")
+
+        back_ground_img = ImageTk.PhotoImage(PIL.Image.open(r"Images bus\opening screen.png"))
+        window.geometry(f"{back_ground_img.width()}x{back_ground_img.height()}")
         window.iconbitmap(f'images bus\\childhood dream for project.ico')  # put stuff to icon
         window.title("user setup")
         window.resizable(OFF, OFF)
-
-        main_label = Label(window, text="please enter the needed information about the bus")
-        main_label.place(x=50, y=30)
+        back_ground_label = Label(window, image=back_ground_img)
+        back_ground_label.place(x=0, y=0)
+        #main_label = Label(window, text="please enter the needed information about the bus")
+        #main_label.place(x=50, y=30)
 
         line_entry = self.place_entry_and_label(window, "Line number", (35, 130), default_value="14")
         id_entry = self.place_entry_and_label(window, "Bus ID", (110, 70),
@@ -575,6 +588,8 @@ class GUI:
             self.__line = int(line_entry.get())
             self.__station = int(station_entry.get())
             window.destroy()
+
+
         except:
             error_window = Tk()
             error_window.geometry("200x80")
