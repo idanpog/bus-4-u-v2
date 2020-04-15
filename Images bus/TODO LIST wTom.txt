@@ -17,19 +17,111 @@ Bus client side
 	- low profile logo DONE
 	- icon
 
-Server side
+Server side DEONE
 	-opening screen DONE
-	- main window 
+	- main window DONE
 	
-	- exit btn
-	- kick people btn
+	- exit btn DONE
+	- kick people btn DONE
 	- kick buses btn
 
-	- demote btn
-	- promote btn
+	- demote btn DONE
+	- promote btn DON
 
-	- send broadcast to buses
-	- send broadcast to passengers
+	- send broadcast to buses DONE
+	- send broadcast to passengers DONE
 
 	- low profile logo DONE
 	- icon DONE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+the send isn't in the middle of the button
+"send message to admin" has a typo in the word message, and it looks stretched.
+everything else looks good
+forgot dfots
+
+
+
+scroll up when you finish
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

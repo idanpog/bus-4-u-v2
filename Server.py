@@ -1,10 +1,9 @@
 """
 author: Idan Pogrebinsky
 
--- server --
+-- Server Client --
 """
 
-# before launching type pip install python-telegram-bot --upgrade in
 
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
@@ -13,7 +12,8 @@ import threading
 from sqlite3 import *
 
 from tkinter import *
-from tkinter.ttk import Treeview
+from tkinter import ttk
+from ttkthemes import ThemedStyle
 from time import sleep
 from hashlib import md5
 from copy import deepcopy
@@ -21,25 +21,21 @@ import PIL
 from PIL import ImageTk
 import random
 import time
-
-
-# TODO: add a bar on the top of the window with some random settings
+# TODO: improve the handshake mechanism, let the server update the bus regarding some important constants
+# TODO: add RSA encryption over the handshake
+# TODO: add a layer of symmetrical encryption over the rest of the
+#       communication using a key that will be hand out during the handshake
 # TODO: consider adding a remote server access
-# TODO: go bug hunting
 # TODO: when a bus connects to the server, update him regarding how many stations there are
 # TODO: when the heartbeat mechanism starts, it should update the bus regarding how long each pulse is
 # TODO: mark unactive lines that were requested
 # TODO: support both directions for a line
-# TODO: change the kick passengers btn
 # TODO: notify the users when a bus leaves the system
 # TODO: don't let buses join with wrong station numbers
-# TODO: add an option to brodccast to users
 # TODO: make an anti fat finger for the all buttons
-# TODO: make the text in the exit btn bigger
-# TODO: don't let users do /promote me
 # TODO: make it run as an exe file
 # TODO: upon server shutdown, use the datasender self.__shutdown to send all the buses that the server shut down
-# TODO: fix kick all buses
+# TODO:upgrade the loading screen so it will be a bit smarter
 
 
 class TelegramController:
@@ -129,6 +125,15 @@ class TelegramController:
             self.data_base.log(user, "None", text)
             user.send_message(text)
         self.__updater.stop()
+
+    @property
+    def people_count(self):
+        """
+        counts how many people have placed a request in the system
+        uses the telegram id to avoid counting the same person tice
+        :return: int
+        """
+        return len(self.__users)
 
     def __luanch_handlers(self):
         """
@@ -314,16 +319,25 @@ class TelegramController:
             user.send_message(
                 f"Hey {user.name.split(' ')[0]} your bus line {bus.line_num} will arrive soon at your station.")
 
-    def broadcast_to_users(self, text: str):
+    def broadcast_to_users(self, text: str, sending_group):
         """
-        Broadcasts to all the users a message from the server.
+        Broadcasts to the sending group a message from the server.
         takes a string, and sends out the message to all the users in form of "broadcast from the server: {text}"
         :param text: str
+        :param sending_group: str/int
         :return: None
         """
-
-        for user in self.__users.values():
-            user.send_message(f"broadcast from the server: {text}")
+        if sending_group == "global":
+            for user in self.__users.values():
+                user.send_message(f"broadcast from the server: {text}")
+            print("in broadcast to users global")
+        elif sending_group.isdigit():
+            sending_group = int(sending_group)
+            for user in self.__users.values():
+                for station in user.stations:
+                    if station.line_number == sending_group:
+                        user.send_message(f"broadcast from the server: {text}")
+            print(f"in broadcast to users line{sending_group}")
 
     def __find_relevant_passengers(self, line: int, station_num: int):
         """
@@ -947,7 +961,7 @@ class MessagesSender:
         # acquired later in code
         self.__lock_data = bool()
         self.__socket = None
-        self.__stop = bool()
+        self.stop = bool()
 
     def connect(self, bus_controller):
         """
@@ -972,7 +986,7 @@ class MessagesSender:
         self.__global_messages = {"kick reason": "", "free text": ""}
         self.__lock_data = False
         self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__stop = False
+        self.stop = False
         __main_loop = threading.Thread(target=self.__main_loop, args=(), name="bus updater")
         __main_loop.start()
 
@@ -1013,9 +1027,9 @@ class MessagesSender:
                   kick_reason: str = ""):
         """
         sends a message to all the buses in the given line
-        :param line:
-        :param update_buses:
-        :param update_passengers:
+        :param line: int
+        :param update_buses: bool
+        :param update_passengers: bool
         :param line: int
         :param free_text: str
         :param kick_reason: str
@@ -1212,7 +1226,7 @@ class MessagesSender:
         greatly optimized to reduce the processing time when dealing with big amounts of buses at the server
         """
 
-        while not self.__stop:
+        while not self.stop:
             self.__lock_data = True
             self.__bus_messages_copy = deepcopy(self.__bus_messages)
             self.__line_messages_copy = deepcopy(self.__line_messages)
@@ -1262,15 +1276,15 @@ class MessagesSender:
 
 class BusController:
     """
-    takes control over the buses and the communication with them
+    controls the buses and listens to inputs from them
     holds 3 important communication channels
     new_bus_connections = waits to receive connections from buses that want to join the system
     recieve_updates = waits for buses to send a message with an update regarding their location
     heart_beat = sends pulse to the bus client e very few seconds and if it doens't recieve an answer it kicks the bus
 
-    it stores the information about each bus that is in the system, when it is needed to send a notification
-    to the bus, it opens a TCP connection, sends the data, and closes it.
+    when it's needed to send a notification to a bus, the BusController uses the MessageSender class as help.
     """
+
     NEW_CONNECTION_PORT = 8200
     STATIONS_PORT = 8201
     PASSENGERS_PORT = 8202
@@ -1278,19 +1292,35 @@ class BusController:
     HOST = socket.gethostbyname(socket.gethostname())
     PULSE_DELAY = 3  # in seconds
     MESSAGES_TTL = 10  # in seconds
-    MAX_MESSAGES_TO_DISPLAY = 4
-    MAX_STATION = 14
+    MAX_MESSAGES_TO_DISPLAY = 5
+    MAX_STATION = 314
 
     @property
     def bus_dict(self):
+        """
+        a dictionary that holds all the information regarding the buses in the system
+        each key is a line number and the value is a list that stores all the buses for this certain line number
+        :return: dict
+        """
         return self.__bus_dict
 
     @property
     def stations_dict(self):
+        """
+        a dictionary that holds all the information regarding the passengers that wait at the stations in the system
+        each key is a line number and the value is another dictionary
+        the inner dict holds the station number as a key and a number that represents how many people are waiting at the station.
+        :return: dict
+        """
         return self.__stations_dict
 
     @property
     def buses_count(self):
+        """
+        counts the total number of the buses in the system
+        :return: int
+        """
+
         count = 0
         for line in self.__bus_dict.values():
             # for item in buses:
@@ -1298,53 +1328,65 @@ class BusController:
         return count
 
     @property
-    def people_count(self):
-        """return: the amount of people waiting for buses, used as part of the statistics"""
-        count = 0
-        for line in self.__stations_dict.values():
-            for station in line.values():
-                count += station
-        return count
-
-    @property
     def bus_messages(self):
-        output = ""
+        """
+        all living the messages that the bus drivers sent to the console admin.
+        stores up to 1 message from each bus and and removes them after the TTL has passed
+        :return: list
+        """
 
+        output = []
         for message in self.__bus_messages:
             if time.time() - message['time'] > BusController.MESSAGES_TTL:
                 self.__bus_messages.remove(message)
-            output = f"{time.strftime('%H:%M:%S', time.gmtime(message['time']))} line: {message['sender'].line_num} - station: {message['sender'].station_num} sent: {message['text']}"
-
-        if len(output) > 0:
-            output = output[:-1:]
+            output.append(f"l{message['sender'].line_num}-s{message['sender'].station_num} sent: {message['text']}")
+        while len(output)<BusController.MAX_MESSAGES_TO_DISPLAY:
+            output.append("")
         return output
 
     def __init__(self):
-        # used to accept and listen for new buses that join the system
-        self.__new_bus_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # used to get new updates from buses
-        self.__bus_stations_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__ipv4 = (socket.gethostbyname(socket.gethostname()))
-        self.__bus_dict = {}  # self.__bus_dict[line_num] holds an array that contains all the buses
-        self.__stations_dict = {}  # self.__stations_dict[line_num][station] holds the amount of people at the station
-        # it's a dictionary in a dictionary stracture
-        self.__stop_threads = False  # used to stop all the threads in the server for proper shutdown
+        """
+        :return: BusContoller
+        """
+
+        self.__new_bus_Socket = None     # used to accept and listen for new buses that join the system
+
+        self.__bus_stations_Socket = None# used to get new updates from buses
+        self.__ipv4 = str()
+        self.__bus_dict = {}             # self.__bus_dict[line_num] holds an array that contains all the buses
+        self.__stations_dict = {}        # self.__stations_dict[line_num][station] holds the amount of people at the station
+                                         # it's a dictionary in a dictionary stracture
+        self.__stop_threads = False      # used to stop all the threads in the server for proper shutdown
         self.__telegram_bot = None
         self.__message_sender = None
-        self.__bus_messages = list()  # each message looks like {'sender': bus, 'time':time.time(), 'text': str()}
+        self.__bus_messages = list()     # each message looks like {'sender': bus, 'time':time.time(), 'text': str()}
 
     def connect(self, telegram_bot, message_sender):
-        # connects between the buscontroller and the telegram bot
+        """
+        Used to get the needed connections with the outer work units.
+        Must be ran before using the self.start() command.
+
+        :param telegram_bot: TelegramBot
+        :param message_sender: MessageSender
+        :return: None
+        """
+
         self.__telegram_bot = telegram_bot
         self.__message_sender = message_sender
 
     def start(self):
         """
-        launches all the important threads
+        checks that the controller has all the needed connections
+        launches all the important threads and gives starting values to variables
         new_bus_reviever - waits for connections from new buses and adds them to the system
         updates_tracker - waits for connections from buses in the system and updates the relevant information
-        heart_beat - keeps track of all the buses and makes sure that there are no offline buses by kicking them
+        heart_beat - keeps track of all the buses and makes sure that there are no offline buses by kicking if found
+        :return: None
         """
+
+        self.__new_bus_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__bus_stations_Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__ipv4 = (socket.gethostbyname(socket.gethostname()))
         if self.__telegram_bot == None:
             print("telegram bot connection is not set yet")
             return
@@ -1362,7 +1404,9 @@ class BusController:
         """
         stops the bus controller
         stops all the threads and prints into the log, (stopped)
+        :return: None
         """
+
         self.__stop_threads = True
         self.__new_bus_Socket.close()
         self.__bus_stations_Socket.close()
@@ -1375,6 +1419,7 @@ class BusController:
         accepts updates only from buses that already exist in the system, checks by id and ip match
         after every update, it will update all the buses about the change.
         """
+
         self.__bus_stations_Socket.bind((self.__ipv4, BusController.STATIONS_PORT))
         self.__bus_stations_Socket.listen(1)
         while not self.__stop_threads:
@@ -1421,6 +1466,15 @@ class BusController:
                 print("closed track_updates")
 
     def __find_bus_by_id(self, id: str, line_num: int = None):
+        """
+        Takes an id and retures the bus object with the matching id.
+        If the optional param line_num is given it'll speed up the search.
+        assumes that the bus is in the system and will return False in case of a error
+        :param id:
+        :param line_num:
+        :return: BusController.Bus / bool
+        """
+
         if line_num != None:
             for bus in self.bus_dict[line_num]:
                 if bus.id == id:
@@ -1434,12 +1488,12 @@ class BusController:
 
     def __new_bus_reciever(self):
         """
+        takes up a thread, runs in a loop until the flag self.__stop_threads set to True
         waits for new buses to log in the system
-        adds them into the system
+        adds them into the memory and updates everyone who needs to know about it.
         the required syntax from the bus side to join the system is data  = {line_number} {station} {ID}
-        after a bus joined the system it notifies all buses about the update.
-        :return:
         """
+
         print(f"waiting for buses at {self.__ipv4}:{BusController.NEW_CONNECTION_PORT}")
         self.__new_bus_Socket.bind((self.__ipv4, BusController.NEW_CONNECTION_PORT))
         self.__new_bus_Socket.listen(1)
@@ -1463,8 +1517,10 @@ class BusController:
     def __add_bus(self, bus):
         """
         an internal method that adds the bus into the storage of the bus controller
-        after it adds the bus into the system it updates all the other buses in the line that there is a change
+        :param: BusController.Bus
+        :return: None
         """
+
         if bus.line_num in self.__bus_dict:
             self.__bus_dict[bus.line_num].append(bus)
         else:
@@ -1475,10 +1531,11 @@ class BusController:
         used only by outer classes that need to update the bus controller regarding a new user
         for example the telegram controller
         adds the user into the self.__stations_dict.
-        :param line: the line that the person waits for
-        :param station: the stations that the person waits at
+        :param line: int - the line that the person waits for
+        :param station: int - the stations that the person waits at
         :return: None
         """
+
         if line in self.__stations_dict:
             if station in self.__stations_dict[line]:
                 self.__stations_dict[line][station] += 1
@@ -1489,8 +1546,11 @@ class BusController:
 
     def remove_person_from_the_station(self, station: TelegramController.Station):
         """
-        gets a station
-        removes the person from the station and notifies the buses about the update."""
+        removes the person from the station and notifies the buses about the update.
+        :param station: TelegramController.Station
+        :return: None
+        """
+
         if station.line_number in self.__stations_dict and station.station_number in self.__stations_dict[
             station.line_number]:
             if self.__stations_dict[station.line_number][station.station_number] == 1:
@@ -1504,6 +1564,16 @@ class BusController:
             print("whoops an error, looks like the current station doesn't exit and there's no person waiting for it.")
 
     def __try_remove_people_from_the_station(self, line: int = None, station_num: int = None, bus=None):
+        """
+        takes a bus or a line and a station number instead
+        checks if there are people waiting at the station, kicks them and all their other requests from the system
+        when a person is picked up, all of his other requests also close.
+        :param line: int
+        :param station_num: int
+        :param bus: BusController
+        :return: None
+        """
+
         if bus != None:
             line = bus.line_num
             station_num = bus.station_num
@@ -1525,17 +1595,22 @@ class BusController:
                     self.remove_person_from_the_station(station)
 
     def show_available_lines(self):
-        """just returns a list of all the active lines in the system"""
+        """
+        just returns a list of all the active lines in the system
+        :return: list
+        """
+
         if len(self.__bus_dict) == 0:
             return "None"
         return list(self.__bus_dict.keys())
 
     def show_buses_for_line(self, line: int) -> str:
         """
-        shows all the buses that are in the given line
-        :param line:
-        :return: a string, that has all the buses locations in this line
+        shows all the buses that are in the given line, shows the buses locations in the line.
+        :param line: int
+        :return: str
         """
+
         if line not in self.__bus_dict.keys():
             return "-None-"
         output = ""
@@ -1548,67 +1623,53 @@ class BusController:
         """
         tells all the buses that they've been kicked
         and then empties the self.__bus_dict
+        :param reason: str
+        return: None
         """
+
         self.__message_sender.send_global(kick_reason=reason)
         self.__bus_dict = {}
-
         print("kicked all buses from the system")
 
     def kick_all_passengers(self):
         """
         kicks all passengers
         notifies all the buses that the passengers have been removed
+        :return: None
         """
+
         changed_lines = self.__stations_dict.keys()
         for line in changed_lines:
             if line in self.__bus_dict:
                 self.__message_sender.send_line(line, update_passengers=True)
         self.__stations_dict = {}
 
-    def __check_duplicates(self):
-        """
-        checks if there are duplicates of the buses, if there are 2 buses with a matching id
-        if it finds, it kickes both of them.
-        ususally used during the pulse.
-        :return:
-        """
-        buses = []
-        for line in self.__bus_dict.values():
-            for bus in line:
-                buses.append(bus)
-
-        for idx, bus in enumerate(buses):
-            for another_bus in buses[idx + 1::]:
-                if bus.id == another_bus.id:
-                    print(f"found duplicates, {bus}\n\n {another_bus}")
-                    self.__message_sender.send_bus(bus, kick_reason="found another bus with he same id")
-                    self.__message_sender.send_bus(another_bus, kick_reason="found another bus with he same id")
-                    self.remove_bus(bus)
-                    self.remove_bus(another_bus)
 
     def __heart(self):
-
         """
         will be launched in a separate thread
         cycles the command pulse for all the buses every few seconds
         """
+
         while not self.__stop_threads:
             start_time = time.time()
             self.__pulse_all()
-            # self.__check_duplicates()
             # print(f"total pulse time = {time()-start_time} seconds")
             sleep(BusController.PULSE_DELAY)
         print("stopped the heartbeats")
 
     def __pulse_all(self):
-        """launches a thread for each bus that will use the command individual_pulse
-        in order to complete the heartbeat mechanism"""
+        """
+        pulses each bus with a "check" request, kicks the bus if he failed to pass the check
+        crucial part of the heartbeat mechanism
+        :return: None
+        """
+
         if len(self.__bus_dict) == 0:
             return
         bus_dict_copy = self.__bus_dict.copy()
         for line in bus_dict_copy.values():
             for bus in line:
-                # threading.Thread(target=self.__indevidual_pulse, args=(bus,), name=f"pulse ID: {bus.id}").start()
                 self.__indevidual_pulse(bus)
 
     def __indevidual_pulse(self, bus):
@@ -1618,16 +1679,25 @@ class BusController:
         and wait for a response from the bus with his ID
         if the bus isn't responding, or sent the wrong ID he'll be kicked.
         """
+
         if not bus.check_up():
             print("bus found inactive")
             self.remove_bus(bus)
 
     def check_line(self, line):
-        """returns wherever the line is in the server or not"""
+        """
+        returns wherever the line is in the server or not
+        :param line: int
+        :return: bool
+        """
         return int(line) in self.__bus_dict
 
     def remove_bus(self, bus):
-        """kicks a bus from the memory of the server, and notifies all the important line"""
+        """
+        kicks a bus from the memory of the server, and notifies everyone who needs to know about it.
+        :param bus: BusController.Bus
+        :return: None
+        """
         self.__bus_dict[bus.line_num].remove(bus)
         print(f"removed: {bus}")
         if len(self.__bus_dict[bus.line_num]) == 0:
@@ -1636,10 +1706,18 @@ class BusController:
     class Bus:
         """
         an internal class that represents a bus.
-        stores all the needed information including the location, the ip and id
+        stores all the needed information including the line number, location, the ip and id
         """
 
         def __init__(self, address, line_number, station, ID):
+            """
+            :param address: tuple
+            :param line_number: str
+            :param station: str
+            :param ID: str
+            :return: BusController.Bus
+            """
+
             self.__address = address
             self.__station = int(station)
             self.__line_number = int(line_number)
@@ -1647,33 +1725,39 @@ class BusController:
 
         @property
         def station_num(self):
+            """
+            :return: int
+            """
             return self.__station
 
         @property
         def line_num(self):
+            """
+            :return: int
+            """
             return self.__line_number
 
         @property
         def id(self):
+            """
+            :return: str
+            """
             return self.__id
 
         def set_station(self, station):
+            """
+            :param station: int
+            :return: None
+            """
             self.__station = int(station)
-
-        def update_passengers(self, station, passengers):
-            """
-            updates the bus regarding the passengers at the station
-            data = {station} {number_of_people}
-            """
-            data = f"people {station} {passengers}"
-            self.send_to_bus(data)
 
         def send_to_bus(self, data: str):
             """
-            sends the bus the data you give to the command
-            :param data:
-            :return:
+            Sends the bus whatever information you give it
+            :param data: str
+            :return: None
             """
+
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((self.__address[0], BusController.PASSENGERS_PORT))
             data = str(data).encode()
@@ -1686,6 +1770,7 @@ class BusController:
             send a Check notification
             returns True if everything is valid and false if the bus returned the wrong ID or didn't respond
             """
+
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(BusController.PULSE_DELAY * 0.8)
             output = True
@@ -1725,11 +1810,15 @@ class GUI:
     """
 
     def __init__(self):
-        """initializes all the important information"""
+        """
+        initializes all the important information
+        :return: GUI
+        """
+
         self.__main_window = None
         self.__main_display_table = None
         self.remote_stop = False
-        #
+
         self.__start_time = None
         self.__broadcast_entry = None
         self.__broadcast_label = None
@@ -1738,23 +1827,28 @@ class GUI:
         self.__active_buses_stringvar = None
         self.__number_of_people_stringvar = None
         self.__session_time_stringvar = None
-        self.__free_text_stringvar = None
-        # self.__statistics_coords = {"x": 530, "y":430}
-        # self.__broadcast_coords = {"x": 510, "y":210}
-        # self.__messages_coords = {"x": 500, "y":20}
-        # self.__admin_controls_coords = {"x": 530, "y":350}
-        # self.__main_buttons_coords = {"x": 20, "y":510}
-        # self.__table_coords = {"x": 0, "y":0, "width":480, "height": 480}
-
-        self.__statistics_coords = {"x": 180, "y": 445}
-        self.__broadcast_coords = {"x": 00, "y": 210}
-        self.__messages_coords = {"x": 00, "y": 00}
-        self.__admin_controls_coords = {"x": 30, "y": 350}
-        self.__main_buttons_coords = {"x": 420, "y": 510}
-        self.__table_coords = {"x": 400, "y": 0, "width": 480, "height": 445}
-        self.__logo_coords = {"x": 0, "y": 460}
+        self.__free_text_stringvars_dict = dict() #holds all the stringvars needed for the bus messages
+        self.__font_name = "Bahnschrift SemiBold SemiConden"
+        #coordinates for groups of icons on the screen
+        self.__main_buttons_coords = {"x": 458, "y": 647}
+        self.__statistics_coords = {"x": 348, "y": 690}
+        self.__admin_controls_coords = {"x": 459, "y": 777}
+        self.__broadcast_coords = {"x": 22, "y": 356}
+        self.__messages_coords = {"x": 58, "y": 56}
+        self.__table_coords = {"x": 448, "y": 16, "width": 620, "height": 566}
 
     def connect(self, bus_controller, telegram_controller, message_sender, data_base):
+        """
+        Used to get the needed connections with the outer work units.
+        Must be ran before using the self.start() command.
+
+        :param bus_controller: BusController
+        :param telegram_controller: TelegramController
+        :param message_sender: MessageSender
+        :param data_base: DBManager
+        :return: None
+        """
+
         self.__telegram_controller = telegram_controller
         self.__bus_controller = bus_controller
         self.__message_sender = message_sender
@@ -1762,26 +1856,26 @@ class GUI:
 
     def start(self):
         """
-        starts the main window as self.__main_window, shows the table, places the buttons, and at the end
-        starts a loops that just keeps updeting the table and the statistics
+        starts the loading screen followed by the main window
+        starts a loops that just keeps updeting all the widgets
         """
 
         self.__loading_window()
-
-        # started the loading proccess
         self.__main_window = Tk()
         self.__start_time = time.time()
         self.__active_lines_stringvar = StringVar()
         self.__active_buses_stringvar = StringVar()
         self.__number_of_people_stringvar = StringVar()
         self.__session_time_stringvar = StringVar()
-        self.__free_text_stringvar = StringVar()
+        for n in range(0, BusController.MAX_MESSAGES_TO_DISPLAY):
+            self.__free_text_stringvars_dict[n] = StringVar()
 
-        self.__main_window.geometry("900x560")
+        self.__background_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\main frame.png"))
+        self.__main_window.geometry(f"{self.__background_img.width()}x{self.__background_img.height()}")
         self.__main_window.iconbitmap(r'Images server\childhood dream for project.ico')  # put stuff to icon
-        self.__main_window.title("buses")
+        self.__main_window.title("Control Panel")
         self.__main_window.resizable(OFF, OFF)
-        self.__place_logo()
+        Label(self.__main_window, image=self.__background_img, bg="#192b3d").place(x=0, y=0)
         self.__place_statistics_labels()
         self.__place_main_buttons()
         self.__place_broadcast_section()
@@ -1794,15 +1888,27 @@ class GUI:
 
     @property
     def session_time(self):
+        """
+        tells how long the bus client has been running, telling how long the bus driver has been driving
+        :return: str
+        """
+
         time_in_seconds = time.time() - self.__start_time
         return time.strftime('%H:%M:%S', time.gmtime(time_in_seconds))
 
     def __loading_window(self):
+        """
+        starts the loading window, shows the logo and waits a set amount of time to let everything else load.
+        NOT FINISHED YET
+        :return: None
+        """
+
         loading_window = Tk()
-        loading_window.geometry("740x740")
+        loading_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\loading screen.png"))
+        loading_window.geometry(f"{loading_img.width()}x{loading_img.height()-20}")
         loading_window.title("Loading")
         loading_window.resizable(OFF, OFF)
-        loading_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\loading screen.png"))
+
         loading_label = Label(loading_window, image=loading_img, bg="#192b3d")
         loading_label.place(x=0, y=0)
         loading_window.after(1000, lambda: loading_window.destroy())
@@ -1812,31 +1918,40 @@ class GUI:
         """
         tries to close the window,
         after that tells the TelegramController unit and the BusControllerunit to stop
+        takes an optional parameter that tells the other work units information about why the server stopped
         closes the code
+        :param reason: str
+        :return: None
         """
+
         print(f"trying to close because {reason}")
         try:
             self.__main_window.destroy()
         except:
             print("failed to close the main window")
 
+        #self.__message_sender.stop = True          TO BE FIXED
+
         self.__telegram_controller.stop()
         self.__bus_controller.stop()
-
         sys.exit(f"properly closed by {reason}")
 
     def __kick_passengers(self):
         """
-        tells the telegram controller unit to kick all
-        the passengers for the reason that they have been kicked by an admin
+        tells the telegram controller unit to kick all the passengers
+        passes the param reason that they have been kicked by an admin
+        :return: None
         """
+
         self.__telegram_controller.kick_all_passengers("kicked all passengers by an admin")
 
     def __loop(self):
         """
-        while the remote stop = False it keeps on looping and updaing the
-        statistics and the table every second
+        This is the main loop of the GUI, keeps everything updates and responsive
+        As long as the variable stop = False it'll keep looping
+        updates the table and the labels in the program
         """
+
         self.__update_table()
         self.__update_labels()
         if self.remote_stop:
@@ -1844,29 +1959,31 @@ class GUI:
         self.__main_window.after(1000, self.__loop)
 
     def __place_statistics_labels(self):
+        """
+        Places all the statistics lables
+        Doens't take any parameters but uses that self.__statistics_coords to place the labels at the correct location
+        :return: None
+        """
 
         base_x = self.__statistics_coords["x"]
         base_y = self.__statistics_coords["y"]
-        active_lines_label = Label(self.__main_window, textvariable=self.__active_lines_stringvar)
-        number_of_buses_label = Label(self.__main_window, textvariable=self.__active_buses_stringvar)
-        number_of_people_lable = Label(self.__main_window, textvariable=self.__number_of_people_stringvar)
-        session_time_lable = Label(self.__main_window, textvariable=self.__session_time_stringvar)
+        active_lines_label = Label(self.__main_window, textvariable=self.__active_lines_stringvar, fg="#1DB954", bg = "#000000", font = (self.__font_name, 18))
+        number_of_buses_label = Label(self.__main_window, textvariable=self.__active_buses_stringvar, fg="#1DB954", bg = "#000000", font = (self.__font_name, 18))
+        number_of_people_lable = Label(self.__main_window, textvariable=self.__number_of_people_stringvar, fg="#1DB954", bg = "#000000", font = (self.__font_name, 18))
+        session_time_lable = Label(self.__main_window, textvariable=self.__session_time_stringvar, fg="#1DB954", bg = "#000000", font = (self.__font_name, 23))
         number_of_people_lable.place(x=base_x, y=base_y)
-        active_lines_label.place(x=base_x, y=base_y + 30)
-        number_of_buses_label.place(x=base_x, y=base_y + 60)
-        session_time_lable.place(x=base_x, y=base_y + 90)
-
-    def __place_logo(self):
-
-        self.logo = ImageTk.PhotoImage(PIL.Image.open(r"Images server\logo.png"))
-        self.go_label = Label(self.__main_window, image=self.logo)
-        self.go_label.place(x=self.__logo_coords["x"], y=self.__logo_coords["y"])
+        active_lines_label.place(x=base_x-35, y=base_y + 35)
+        number_of_buses_label.place(x=base_x+54, y=base_y + 69)
+        session_time_lable.place(x=base_x-70, y=base_y + 116)
 
     def find_table_length(self):
         """
-        an internal method that is used to search for how big the chart that displays the
+        An internal method that is used to search for how big the chart that displays the
         information about the buses and the passengers should be.
+        finds the max len and returns it.
+        :return: int
         """
+
         max_x_stations = 0
         for line_num, stations in self.__bus_controller.stations_dict.items():
             max_key = max(stations.keys())
@@ -1881,7 +1998,13 @@ class GUI:
         return max_x
 
     def __update_table(self):
-        """used to refresh the data in the table, it generates the data and then puts it in."""
+        """
+        used to update the data on the display
+        recalculates all the data again each time it's called
+        still fast and reliable
+        :return: None
+        """
+
         headlines = ["", ]
         headlines += range(1, + 1)
         headlines = [" "] + [str(x) for x in range(1, self.find_table_length() + 1)]
@@ -1900,16 +2023,16 @@ class GUI:
             # inserts new data into the chart, goes line by line
             self.__main_display_table.insert("", END, values=line)
 
-        #
 
     def __update_labels(self):
-
         """updates all the with the new information"""
-        self.__active_buses_stringvar.set("Number of buses in the system: " + str(self.__bus_controller.buses_count))
-        self.__active_lines_stringvar.set("Number of active lines: " + str(len(self.__bus_controller.bus_dict)))
-        self.__number_of_people_stringvar.set("Number of people waiting: " + str(self.__bus_controller.people_count))
-        self.__session_time_stringvar.set("session time is: " + self.session_time)
-        self.__free_text_stringvar.set(self.__bus_controller.bus_messages)
+        self.__active_buses_stringvar.set(str(self.__bus_controller.buses_count))
+        self.__active_lines_stringvar.set(str(len(self.__bus_controller.bus_dict)))
+        self.__number_of_people_stringvar.set(str(self.__telegram_controller.people_count))
+        self.__session_time_stringvar.set(self.session_time)
+        messages =self.__bus_controller.bus_messages
+        for n in range(0, BusController.MAX_MESSAGES_TO_DISPLAY):
+            self.__free_text_stringvars_dict[n].set(messages[n])
 
     def __place_table(self):
         base_x = self.__table_coords["x"]
@@ -1917,10 +2040,19 @@ class GUI:
         base_height = self.__table_coords["height"]
         base_width = self.__table_coords["width"]
         headlines = [" "] + [str(x) for x in range(1, self.find_table_length() + 1)]
-        scrollX = Scrollbar(self.__main_window, orient=HORIZONTAL)
-        scrollY = Scrollbar(self.__main_window, orient=VERTICAL)
-        self.__main_display_table = Treeview(self.__main_window, show="headings", columns=headlines,
-                                             yscrollcommand=scrollY.set, xscrollcommand=scrollX.set)
+        self.__tree_style = ThemedStyle(self.__main_window)
+        self.__tree_style.set_theme("black")
+        self.__tree_style.configure("mystyle.Treeview", highlightthickness=0, bd=0,
+                        font=(self.__font_name, 11))  # Modify the font of the body
+        self.__tree_style.configure("mystyle.Treeview", background="black",
+                fieldbackground="black", foreground="green")
+        self.__tree_style.configure("mystyle.Treeview.Heading", font=(self.__font_name, 13, 'bold'), foreground="green")  # Modify the font of the headings
+        scrollX = ttk.Scrollbar(self.__main_window, orient=HORIZONTAL)
+        scrollY = ttk.Scrollbar(self.__main_window, orient=VERTICAL)
+
+        self.__main_display_table = ttk.Treeview(self.__main_window, show="headings", columns=headlines,
+                                             yscrollcommand=scrollY.set, xscrollcommand=scrollX.set, style = "mystyle.Treeview")
+
         scrollY.config(command=self.__main_display_table.yview)
         scrollY.place(x=base_x + base_width, y=base_y, height=base_height)
         scrollX.config(command=self.__main_display_table.xview)
@@ -1944,59 +2076,60 @@ class GUI:
         self.__kick_all_passengers_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\kick people btn.png"))
         self.__kick_all_buses_btn_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\kick buses btn.png"))
 
-        self.__kick_buses_btn = Button(self.__main_window, image=self.__kick_all_buses_btn_img)
-        self.__kick__all_passengers_btn = Button(self.__main_window, image=self.__kick_all_passengers_img,
-                                                 command=lambda: self.__bus_controller.kick_all_buses(
-                                                     reason="kicked all buses by the console"))
-        self.__exit_button = Button(self.__main_window, command=self.__stop, image=self.__exit_btn_img)
+        self.__kick_buses_btn = Button(self.__main_window, image=self.__kick_all_buses_btn_img, command=lambda: self.__bus_controller.kick_all_buses(reason="kicked all buses by the console"), borderwidth=0, background = "#000000", activebackground = "#083417")
+        self.__kick__all_passengers_btn = Button(self.__main_window, image=self.__kick_all_passengers_img,command = lambda:self.__telegram_controller.kick_all_passengers("kicked all users from console"), borderwidth=0, background = "#000000", activebackground = "#083417")
+        self.__exit_button = Button(self.__main_window, command=self.__stop, image=self.__exit_btn_img, borderwidth=0, background = "#000000", activebackground = "#B91D1D")
 
-        self.__exit_button.place(x=base_x, y=base_y)
-        self.__kick__all_passengers_btn.place(x=base_x + 95, y=base_y)
+        self.__exit_button.place(x=base_x+210, y=base_y+133)
+        self.__kick__all_passengers_btn.place(x=base_x, y=base_y)
         self.__kick_buses_btn.place(x=base_x + 210, y=base_y)
 
     def __place_broadcast_section(self):
         base_x = self.__broadcast_coords["x"]
         base_y = self.__broadcast_coords["y"]
-        self.broadcast_section_img = ImageTk.PhotoImage(
-            PIL.Image.open(r"Images server\broadcast important messages.png"))
-        self.__broadcast_label = Label(self.__main_window, image=self.broadcast_section_img)
-        self.__broadcast_entry = Entry(self.__main_window, width=56)
-        self.__broadcast_to_buses_button = Button(self.__main_window, height=2, width=22,
-                                                  text="Send broadcast to buses",
-                                                  command=self.__send_broadcast_to_buses)
-        self.__broadcast_to_users_button = Button(self.__main_window, height=2, text="Send broadcast to passengers",
-                                                  command=self.__send_broadcast_to_users)
+        self.__send_to_buses_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\send to buses.png"))
+        self.__send_to_people_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\send to people.png"))
 
-        self.__broadcast_label.place(x=base_x, y=base_y)
-        self.__broadcast_entry.place(x=base_x + 17, y=base_y + 40)
-        self.__broadcast_to_buses_button.place(x=base_x + 20, y=base_y + 60)
-        self.__broadcast_to_users_button.place(x=base_x + 190, y=base_y + 60)
+        self.__global_broadcast_entry = Entry(self.__main_window, width=28, borderwidth=0, background = "black", foreground="#1DB954", insertbackground ="#1DB954", font = (self.__font_name, 22))
+        self.__line_text_broadcast_entry = Entry(self.__main_window, width=28, borderwidth=0, background = "black", foreground="#1DB954",insertbackground ="#1DB954", font = (self.__font_name, 22))
+        self.__line_number_broadcast_entry = Entry(self.__main_window,  width=5, borderwidth=0, background = "black", foreground="#1DB954",insertbackground ="#1DB954", font = (self.__font_name, 16))
+        self.__global_broadcast_to_buses_button = Button(self.__main_window, image = self.__send_to_buses_img, command=lambda: self.__send_broadcast_to_buses(sending_group="global"), borderwidth=0, background = "#000000", activebackground = "#000000")
+        self.__line_broadcast_to_buses_button = Button(self.__main_window, image=self.__send_to_buses_img, command=lambda: self.__send_broadcast_to_buses(sending_group="line"), borderwidth=0, background="#000000", activebackground="#000000")
+        self.__global_broadcast_to_people_button = Button(self.__main_window, image = self.__send_to_people_img, command=lambda: self.__send_broadcast_to_users(sending_group="global"), borderwidth=0, background = "#000000", activebackground = "#000000")
+        self.__line_broadcast_to_people_button = Button(self.__main_window, image = self.__send_to_people_img, command=lambda: self.__send_broadcast_to_users(sending_group="line"), borderwidth=0, background = "#000000", activebackground = "#000000")
 
-        print("placed broadcast section")
+        self.__global_broadcast_entry.place(x=base_x, y=base_y)
+        self.__line_text_broadcast_entry.place(x=base_x, y=base_y+143)
+        self.__line_number_broadcast_entry.place(x = base_x +292, y= base_y+110)
+        self.__global_broadcast_to_buses_button.place(x = base_x+3, y= base_y+54)
+        self.__line_broadcast_to_buses_button.place(x = base_x+3, y= base_y+197)
+        self.__global_broadcast_to_people_button.place(x = base_x+216, y= base_y+55)
+        self.__line_broadcast_to_people_button.place(x=base_x + 216, y=base_y + 197)
 
     def __place_bus_messages_section(self):
-
         base_x = self.__messages_coords["x"]
         base_y = self.__messages_coords["y"]
-        self.received_from_buses_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\received from buses.png"))
-        self.__messages_title_label = Label(self.__main_window, image=self.received_from_buses_img)
-        self.__free_text_label = Label(self.__main_window, textvariable=self.__free_text_stringvar, bg="white")
-        # TODO: mess with those numbers so it'll look good
-
-        self.__messages_title_label.place(x=base_x, y=base_y)
-        self.__free_text_label.place(x=base_x + 20, y=base_y + 75)
+        spacing = 42
+        self.__free_text_labels_dict = {}
+        for n in range(0, BusController.MAX_MESSAGES_TO_DISPLAY):
+            self.__free_text_labels_dict[n] =Label(self.__main_window, textvariable=self.__free_text_stringvars_dict[n], bg="#000000",
+                                        fg="#1DB954", font=(self.__font_name, 16))
+            self.__free_text_labels_dict[n].place(x= base_x, y = base_y + spacing*n)
 
     def __place_admin_controls(self):
 
         base_x = self.__admin_controls_coords["x"]
         base_y = self.__admin_controls_coords["y"]
-        self.__admin_controls_entry = Entry(self.__main_window)
-        self.__admin_promote_button = Button(self.__main_window, text="promote", command=self.__promote_admin_pressed)
-        self.__admin_demote_button = Button(self.__main_window, text="demote", command=self.__demote_admin_pressed)
+        self.__admin_promote_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\promote btn.png"))
+        self.__admin_demote_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\demote btn.png"))
+
+        self.__admin_controls_entry = Entry(self.__main_window, borderwidth=0, width = 10,background = "black", insertbackground ="#1DB954",foreground="#1DB954", font = (self.__font_name, 29))
+        self.__admin_promote_button = Button(self.__main_window, image=self.__admin_promote_img, command=self.__promote_admin_pressed, borderwidth=0, background = "#000000", activebackground = "#083417")
+        self.__admin_demote_button = Button(self.__main_window, image=self.__admin_demote_img, command=self.__demote_admin_pressed, borderwidth=0, background = "#000000", activebackground = "#083417")
 
         self.__admin_controls_entry.place(x=base_x, y=base_y)
-        self.__admin_promote_button.place(x=base_x + 70, y=base_y + 25)
-        self.__admin_demote_button.place(x=base_x, y=base_y + 25)
+        self.__admin_promote_button.place(x=base_x + 100, y=base_y + 57)
+        self.__admin_demote_button.place(x=base_x-3, y=base_y + 57)
 
     def __promote_admin_pressed(self):
         id = self.__admin_controls_entry.get()
@@ -2012,18 +2145,45 @@ class GUI:
             return
         self.__data_base.demote_admin(id=id)
 
-    def __send_broadcast_to_buses(self):
-        data = self.__broadcast_entry.get()
-        self.__broadcast_entry.delete(0, 'end')
-        print(f"broad casting data: {data}")
-        self.__message_sender.send_global(free_text=data)
+    def __send_broadcast_to_buses(self, sending_group="global"):
+
+        if sending_group == "global":
+            data = self.__global_broadcast_entry.get()
+            self.__global_broadcast_entry.delete(0, 'end')
+            self.__message_sender.send_global(free_text=data)
+        elif sending_group =="line":
+            line = self.__line_number_broadcast_entry.get()
+            if len(line) > 0 and line.isnumeric():
+
+                data = self.__line_text_broadcast_entry.get()
+                self.__line_text_broadcast_entry.delete(0, 'end')
+                self.__line_number_broadcast_entry.delete(0, 'end')
+                self.__message_sender.send_line(int(line), free_text=data)
+            else:
+                print(f"line number must be a number, {line}")
+        else:
+            print(f"{sending_group} isn't a valid sending group")
         # TODO: fill this function
 
-    def __send_broadcast_to_users(self):
-        data = self.__broadcast_entry.get()
-        self.__broadcast_entry.delete(0, 'end')
-        print(f"broad casting data: {data}")
-        self.__telegram_controller.broadcast_to_users(data)
+    def __send_broadcast_to_users(self, sending_group="global"):
+        if sending_group == "global":
+            data = self.__global_broadcast_entry.get()
+            self.__global_broadcast_entry.delete(0, 'end')
+            print(f"broad casting data: {data}")
+            self.__message_sender.send_global(free_text=data)
+        elif sending_group == "line":
+            line = self.__line_number_broadcast_entry.get()
+            if len(line) >0 and line.isnumeric():
+                data = self.__line_text_broadcast_entry.get()
+                self.__line_text_broadcast_entry.delete(0, 'end')
+                self.__line_number_broadcast_entry.delete(0, 'end')
+                self.__telegram_controller.broadcast_to_users(data, sending_group=line)
+            else:
+                print(f"line number must be a number, {line}")
+        else:
+            print(f"{sending_group} is an invalid sending group")
+
+
         # TODO: fill this function
 
     def __display_buses_location(self):
