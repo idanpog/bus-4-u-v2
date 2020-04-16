@@ -2025,21 +2025,37 @@ class GUI:
 
 
     def __update_labels(self):
-        """updates all the with the new information"""
+        """
+        updates all the with the new information
+        generated the needed information and places it into the StringVars that are bound to the labels
+        part of the main update loop that keeps everything updated
+        :return: None
+        """
+
         self.__active_buses_stringvar.set(str(self.__bus_controller.buses_count))
         self.__active_lines_stringvar.set(str(len(self.__bus_controller.bus_dict)))
         self.__number_of_people_stringvar.set(str(self.__telegram_controller.people_count))
         self.__session_time_stringvar.set(self.session_time)
+
         messages =self.__bus_controller.bus_messages
         for n in range(0, BusController.MAX_MESSAGES_TO_DISPLAY):
             self.__free_text_stringvars_dict[n].set(messages[n])
 
     def __place_table(self):
+        """
+        Places all the widgets related to the table, without placing any information in them.
+        based on Ttk.Treeview, Ttk.Scrollbar and Ttk.ThemeStyle.
+        the Ttk.ThemeStyle takes a long time to load so this causes almost all the waiting time for the loading of the program
+        currently holds the Dark theme that makes the desgin match the outer desgin
+        :return: None
+        """
+
         base_x = self.__table_coords["x"]
         base_y = self.__table_coords["y"]
         base_height = self.__table_coords["height"]
         base_width = self.__table_coords["width"]
         headlines = [" "] + [str(x) for x in range(1, self.find_table_length() + 1)]
+        #create a custome Style
         self.__tree_style = ThemedStyle(self.__main_window)
         self.__tree_style.set_theme("black")
         self.__tree_style.configure("mystyle.Treeview", highlightthickness=0, bd=0,
@@ -2047,57 +2063,100 @@ class GUI:
         self.__tree_style.configure("mystyle.Treeview", background="black",
                 fieldbackground="black", foreground="green")
         self.__tree_style.configure("mystyle.Treeview.Heading", font=(self.__font_name, 13, 'bold'), foreground="green")  # Modify the font of the headings
+        #creates the scrollbars
         scrollX = ttk.Scrollbar(self.__main_window, orient=HORIZONTAL)
         scrollY = ttk.Scrollbar(self.__main_window, orient=VERTICAL)
-
         self.__main_display_table = ttk.Treeview(self.__main_window, show="headings", columns=headlines,
                                              yscrollcommand=scrollY.set, xscrollcommand=scrollX.set, style = "mystyle.Treeview")
-
+        #create a connection between the Tree and the Scrollbars and places them on the screen
         scrollY.config(command=self.__main_display_table.yview)
         scrollY.place(x=base_x + base_width, y=base_y, height=base_height)
         scrollX.config(command=self.__main_display_table.xview)
         scrollX.place(x=base_x, y=base_y + base_height, width=base_width)
         self.__main_display_table.place(x=base_x, y=base_y, width=base_width, height=base_height)
+        #insert the headlines in to the table so there will be something to display as a starting value
         for headline in headlines:
             self.__main_display_table.heading(headline, text=headline)
             self.__main_display_table.column(headline, anchor="center", width=35)
 
     def __place_main_buttons(self):
         """
-        places the buttons, just at the first launch
+        Places the buttons, just at the first launch.
+        depends on the self.__main_buttons_coords dict that tells where the buttons will be placed
+
         the buttons:
             - kick all buses
             - kick all passengers
             - stop server
+        "return: None
         """
+
+        #load the images and the locations
         base_x = self.__main_buttons_coords["x"]
         base_y = self.__main_buttons_coords["y"]
         self.__exit_btn_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\exit btn.png"))
         self.__kick_all_passengers_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\kick people btn.png"))
         self.__kick_all_buses_btn_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\kick buses btn.png"))
-
+        #create the button objects and set their settings to match the desgin
         self.__kick_buses_btn = Button(self.__main_window, image=self.__kick_all_buses_btn_img, command=lambda: self.__bus_controller.kick_all_buses(reason="kicked all buses by the console"), borderwidth=0, background = "#000000", activebackground = "#083417")
         self.__kick__all_passengers_btn = Button(self.__main_window, image=self.__kick_all_passengers_img,command = lambda:self.__telegram_controller.kick_all_passengers("kicked all users from console"), borderwidth=0, background = "#000000", activebackground = "#083417")
         self.__exit_button = Button(self.__main_window, command=self.__stop, image=self.__exit_btn_img, borderwidth=0, background = "#000000", activebackground = "#B91D1D")
-
-        self.__exit_button.place(x=base_x+210, y=base_y+133)
+        #place the buttons on the screen
         self.__kick__all_passengers_btn.place(x=base_x, y=base_y)
+        self.__exit_button.place(x=base_x+210, y=base_y+133)
         self.__kick_buses_btn.place(x=base_x + 210, y=base_y)
 
     def __place_broadcast_section(self):
+        """
+        Places the broadcast section widgets, just at the first launch.
+        depends on the self.__broadcast_coords dict that tells where the buttons will be placed.
+
+            Buttons:
+            - global broadcast to buses - sends the message to all the buses
+            - global broadcast to users - sends the message to all the users
+            - line broadcast to buses - sends the message to only buses in the given line
+            - line broadcast to users - sends the message to only users in the given line
+
+            Entries:
+            - global broadcast entry
+            - line broadcast entry
+            - line number
+
+        :return: None
+        """
+
+        # load the images and the locations
         base_x = self.__broadcast_coords["x"]
         base_y = self.__broadcast_coords["y"]
         self.__send_to_buses_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\send to buses.png"))
         self.__send_to_people_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\send to people.png"))
-
-        self.__global_broadcast_entry = Entry(self.__main_window, width=28, borderwidth=0, background = "black", foreground="#1DB954", insertbackground ="#1DB954", font = (self.__font_name, 22))
-        self.__line_text_broadcast_entry = Entry(self.__main_window, width=28, borderwidth=0, background = "black", foreground="#1DB954",insertbackground ="#1DB954", font = (self.__font_name, 22))
-        self.__line_number_broadcast_entry = Entry(self.__main_window,  width=5, borderwidth=0, background = "black", foreground="#1DB954",insertbackground ="#1DB954", font = (self.__font_name, 16))
-        self.__global_broadcast_to_buses_button = Button(self.__main_window, image = self.__send_to_buses_img, command=lambda: self.__send_broadcast_to_buses(sending_group="global"), borderwidth=0, background = "#000000", activebackground = "#000000")
-        self.__line_broadcast_to_buses_button = Button(self.__main_window, image=self.__send_to_buses_img, command=lambda: self.__send_broadcast_to_buses(sending_group="line"), borderwidth=0, background="#000000", activebackground="#000000")
-        self.__global_broadcast_to_people_button = Button(self.__main_window, image = self.__send_to_people_img, command=lambda: self.__send_broadcast_to_users(sending_group="global"), borderwidth=0, background = "#000000", activebackground = "#000000")
-        self.__line_broadcast_to_people_button = Button(self.__main_window, image = self.__send_to_people_img, command=lambda: self.__send_broadcast_to_users(sending_group="line"), borderwidth=0, background = "#000000", activebackground = "#000000")
-
+        #create the button and entries objects and set their settings to match the desgin
+        self.__global_broadcast_entry = Entry(self.__main_window, width=28, borderwidth=0, background="black",
+                                              foreground="#1DB954", insertbackground="#1DB954",
+                                              font=(self.__font_name, 22))
+        self.__line_text_broadcast_entry = Entry(self.__main_window, width=28, borderwidth=0, background="black",
+                                                 foreground="#1DB954", insertbackground="#1DB954",
+                                                 font=(self.__font_name, 22))
+        self.__line_number_broadcast_entry = Entry(self.__main_window, width=5, borderwidth=0, background="black",
+                                                   foreground="#1DB954", insertbackground="#1DB954",
+                                                   font=(self.__font_name, 16))
+        self.__global_broadcast_to_buses_button = Button(self.__main_window, image=self.__send_to_buses_img,
+                                                         command=lambda: self.__send_broadcast_to_buses(
+                                                             sending_group="global"), borderwidth=0,
+                                                         background="#000000", activebackground="#000000")
+        self.__line_broadcast_to_buses_button = Button(self.__main_window, image=self.__send_to_buses_img,
+                                                       command=lambda: self.__send_broadcast_to_buses(
+                                                           sending_group="line"), borderwidth=0, background="#000000",
+                                                       activebackground="#000000")
+        self.__global_broadcast_to_people_button = Button(self.__main_window, image=self.__send_to_people_img,
+                                                          command=lambda: self.__send_broadcast_to_users(
+                                                              sending_group="global"), borderwidth=0,
+                                                          background="#000000", activebackground="#000000")
+        self.__line_broadcast_to_people_button = Button(self.__main_window, image=self.__send_to_people_img,
+                                                        command=lambda: self.__send_broadcast_to_users(
+                                                            sending_group="line"), borderwidth=0, background="#000000",
+                                                        activebackground="#000000")
+        #place the widgets on the screen
         self.__global_broadcast_entry.place(x=base_x, y=base_y)
         self.__line_text_broadcast_entry.place(x=base_x, y=base_y+143)
         self.__line_number_broadcast_entry.place(x = base_x +292, y= base_y+110)
@@ -2107,6 +2166,14 @@ class GUI:
         self.__line_broadcast_to_people_button.place(x=base_x + 216, y=base_y + 197)
 
     def __place_bus_messages_section(self):
+        """
+        creates and places all the needed widgets for the section that displays messages received from buses.
+        needs to run just once.
+        depends on the self.__messages_coords dict that tells where the buttons will be placed.
+        creates BusController.MAX_MESSAGES labels and fill the self.__free_text_stringvars_dict with StringVars
+        :return: None
+        """
+
         base_x = self.__messages_coords["x"]
         base_y = self.__messages_coords["y"]
         spacing = 42
@@ -2117,7 +2184,15 @@ class GUI:
             self.__free_text_labels_dict[n].place(x= base_x, y = base_y + spacing*n)
 
     def __place_admin_controls(self):
+        """
+        Creates and places all the controlls related to promoting and demoting the users in the system
 
+        includes:
+            - promote button: promotes the given user upon click
+            - demote button : demotes the given user upon clock
+            - id entry      : a place to type the user id that you want to deal with
+        :return: None
+        """
         base_x = self.__admin_controls_coords["x"]
         base_y = self.__admin_controls_coords["y"]
         self.__admin_promote_img = ImageTk.PhotoImage(PIL.Image.open(r"Images server\promote btn.png"))
@@ -2132,6 +2207,15 @@ class GUI:
         self.__admin_demote_button.place(x=base_x-3, y=base_y + 57)
 
     def __promote_admin_pressed(self):
+        """
+        an internal command.
+        triggered upon self.__admin_promote_button click.
+        gets the id from the entry, resets the entry back to the Empty state and promotes the user
+        knows how to deal with invalid values.
+        :takes information from self.__admin_controls_entry.get(): str
+        :return: None
+        """
+
         id = self.__admin_controls_entry.get()
         if not id.isdigit():
             print("failed to promote the user, the given id isn't a number")
@@ -2139,6 +2223,15 @@ class GUI:
         self.__data_base.promote_admin(id=id)
 
     def __demote_admin_pressed(self):
+        """
+        an internal command.
+        triggered upon self.__admin_demote_button click.
+        gets the id from the entry, resets the entry back to the Empty state and demotes the user
+        knows how to deal with invalid values.
+        :takes information from self.__admin_controls_entry.get(): str
+        :return: None
+        """
+
         id = self.__admin_controls_entry.get()
         if not id.isdigit():
             print("failed to promote the user, the given id isn't a number")
@@ -2146,15 +2239,23 @@ class GUI:
         self.__data_base.demote_admin(id=id)
 
     def __send_broadcast_to_buses(self, sending_group="global"):
+        """
+        An internal command
+        Triggered upon self.__global_broadcast_to_buses_button or self.__line_text_broadcast_to_buses click.
+        Gets the data to send from the self.__global_broadcast_entry or self.__line_number_broadcast_entry.
+        in case of sending to line, it will get the line number from self.__line_number_broadcast_entry.
+        :param sending_group: str - "global" / "line"
+        return: None
+        """
 
         if sending_group == "global":
             data = self.__global_broadcast_entry.get()
             self.__global_broadcast_entry.delete(0, 'end')
             self.__message_sender.send_global(free_text=data)
+
         elif sending_group =="line":
             line = self.__line_number_broadcast_entry.get()
             if len(line) > 0 and line.isnumeric():
-
                 data = self.__line_text_broadcast_entry.get()
                 self.__line_text_broadcast_entry.delete(0, 'end')
                 self.__line_number_broadcast_entry.delete(0, 'end')
@@ -2163,14 +2264,23 @@ class GUI:
                 print(f"line number must be a number, {line}")
         else:
             print(f"{sending_group} isn't a valid sending group")
-        # TODO: fill this function
 
     def __send_broadcast_to_users(self, sending_group="global"):
+        """
+        An internal command
+        Triggered upon self.__global_broadcast_to_people_button or self.__line_text_broadcast_to_people_button click.
+        Gets the data to send from the self.__global_broadcast_entry or self.__line_number_broadcast_entry.
+        in case of sending to line, it will get the line number from self.__line_number_broadcast_entry.
+        :param sending_group: str - "global" / "line"
+        :return: None
+        """
+
         if sending_group == "global":
             data = self.__global_broadcast_entry.get()
             self.__global_broadcast_entry.delete(0, 'end')
             print(f"broad casting data: {data}")
             self.__message_sender.send_global(free_text=data)
+
         elif sending_group == "line":
             line = self.__line_number_broadcast_entry.get()
             if len(line) >0 and line.isnumeric():
@@ -2183,9 +2293,6 @@ class GUI:
         else:
             print(f"{sending_group} is an invalid sending group")
 
-
-        # TODO: fill this function
-
     def __display_buses_location(self):
         """
         forms the list that contains all the information about the buses and the passengers.
@@ -2197,6 +2304,7 @@ class GUI:
             return [[]]  # breaks the run if there are no buses
         data = []
         empty_list = []  # an empty list that has placeholders for later use
+
         for i in range(self.find_table_length()):
             empty_list.append(" ")
         if len(self.__bus_controller.stations_dict) != 0:
@@ -2208,6 +2316,7 @@ class GUI:
                     list[station] = people_count
                     # overrides the placeholders with the amount of people waiting at the station
                 data.append(list)
+
         relevant_lines = []
         # just shows all the lines that are already in the list and showing passengers
         if len(self.__bus_controller.stations_dict) != 0:
@@ -2233,7 +2342,10 @@ class GUI:
 
 
 def main():
-    """start the server"""
+    """
+    start the server
+    creates all the work units and gives them the needed connections and when ready luanch all of them
+    """
 
     bus_controller = BusController()
     steve = TelegramController("990223452:AAHrln4bCzwGpkR2w-5pqesPHpuMjGKuJUI")
