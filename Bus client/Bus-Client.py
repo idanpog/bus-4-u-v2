@@ -455,6 +455,12 @@ class GUI:
         self.__passengers_count_stringvar = None
         self.__buses_count_stringvar = None
         self.__session_time_stringvar = None
+
+        self.__window = None
+        self.__finished_window = None
+        self.__lost_connection_window = None
+        self.__kicked_window = None
+
         self.__server_broadbast_stringvars_dict = dict()
         #those dictionaries store the location regarding plament widget groups on the screen
         self.__statistics_coords = {"x": 540, "y": 408}
@@ -462,7 +468,7 @@ class GUI:
         self.__next_btn_coords = {"x": 29, "y": 177}
         self.__exit_btn_coords = {"x": 29, "y": 490}
         self.__broadcast_section_coords = {"x": 44, "y": 427}
-        self.__server_messages_coords =  {"x": 66, "y": 326, "jump": 36}
+        self.__server_messages_coords =  {"x": 66, "y": 322, "jump": 34}
         self.__table_coords = {"x": 26, "y": 74, "width" : 744, "height":59}
 
 
@@ -495,16 +501,15 @@ class GUI:
         """
 
         self.__bus.stop = True
-        try:
+        if self.__finished_window != None and self.__finished_window.state() == "normal":
             self.__finished_window.destroy()
-        except:
-            print("finished window already closed.")
-        try:
+        if self.__window != None and self.__window.state() == "normal":
             self.__window.destroy()
-        except:
-            print("main window already closed.")
+        if self.__lost_connection_window != None and self.__lost_connection_window.state() == "normal":
+            self.__lost_connection_window.destory()
+        if self.__kicked_window != None and self.__kicked_window.state() == "normal":
+            self.__kicked_window.destroy()
         sys.exit("closed by user")
-
 
     def __start_loading_screen(self):
         """
@@ -571,9 +576,9 @@ class GUI:
         self.__tree_style.configure("mystyle.Treeview", highlightthickness=0, bd=0,
                                     font=(self.__font_name, 11))  # Modify the font of the body
         self.__tree_style.configure("mystyle.Treeview", background="black",
-                                    fieldbackground="black", foreground="green")
+                                    fieldbackground="black", foreground=GUI.__GREEN1)
         self.__tree_style.configure("mystyle.Treeview.Heading", font=(self.__font_name, 13, 'bold'),
-                                    foreground="green")  # Modify the font of the headings
+                                    foreground=GUI.__GREEN1)  # Modify the font of the headings
         scrollX = ttk.Scrollbar(self.__window, orient=HORIZONTAL)
         self.__tree = Treeview(self.__window, show="headings", columns=self.__headlines, xscrollcommand=scrollX.set, style = "mystyle.Treeview")
         self.__tree.place(x=base_x, y=base_y, width=base_width, height=base_height)
@@ -674,7 +679,7 @@ class GUI:
         jump = self.__server_messages_coords["jump"]
         for i in range(0,Bus.MAX_MESSAGE_COUNT):
             self.__server_broadbast_stringvars_dict[i] = StringVar()
-            Label(self.__window, fg=GUI.__GREEN, bg = GUI.__BLACK, font=(self.__font_name, 16, "bold"), textvariable=self.__server_broadbast_stringvars_dict[i]).place(x=base_x, y=base_y+jump*i)
+            Label(self.__window, fg=GUI.__GREEN, bg = GUI.__BLACK, font=(self.__font_name, 15, "bold"), textvariable=self.__server_broadbast_stringvars_dict[i]).place(x=base_x, y=base_y+jump*i)
         # statistics
         base_x = self.__statistics_coords["x"]
         base_y = self.__statistics_coords["y"]
@@ -748,7 +753,6 @@ class GUI:
                 self.__bg_label["image"] = self.__bg_stop_at_the_next_station_img
         else:
             self.__bg_label["image"] = self.__bg_lost_connection_img
-
 
     def display_lost_connection(self):
         """

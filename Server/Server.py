@@ -35,6 +35,7 @@ import time
 # TODO: upon server shutdown, use the datasender self.__shutdown to send all the buses that the server shut down
 # TODO: upgrade the loading screen so it will be a bit smarter
 # TODO: don't let the /stop command be sent by accident
+# TODO: add a window in case if the port is already used
 
 class TelegramController:
     """
@@ -462,12 +463,18 @@ class TelegramController:
                     output = output[-4096::]
                 self.data_base.log(user, update.message.text, "Successfully  showed history")
 
-        if message[1] == "clear":
+        elif message[1] == "clear":
             if not self.data_base.has_history(user):
                 output = "your history is already clean"
             else:
                 self.data_base.clear_history(user)
                 output = "Clean"
+            self.data_base.log(user, update.message.text, output)
+        else:
+            output = "Looks like you have a little mistake\n" \
+                     "the correct way of using the /history command is:\n" \
+                     "/history show\n" \
+                     "/history clear"
             self.data_base.log(user, update.message.text, output)
         user.send_message(output)
 
@@ -516,7 +523,7 @@ class TelegramController:
             except Exception as e:
                 print(e)
                 output = "both of the values you give must be number in order to work" \
-                         "for example, /bus 14 3"
+                         "for example, /request 14 3"
 
         self.data_base.log(user, update.message.text, output)
         update.message.reply_text(output)
@@ -797,7 +804,6 @@ class DBManager:
 
         self.__path = "DataBase.db"
         self.__admins = []
-        self.__banned = []
         self.__update_admin_cache()
 
     def has_history(self, user):
@@ -1956,7 +1962,8 @@ class GUI:
         self.__update_labels()
         if self.remote_stop:
             self.__stop("remote telegram admin")
-        self.__main_window.after(1000, self.__loop)
+        else:
+            self.__main_window.after(1000, self.__loop)
 
     def __place_statistics_labels(self):
         """
@@ -2061,8 +2068,8 @@ class GUI:
         self.__tree_style.configure("mystyle.Treeview", highlightthickness=0, bd=0,
                         font=(self.__font_name, 11))  # Modify the font of the body
         self.__tree_style.configure("mystyle.Treeview", background="black",
-                fieldbackground="black", foreground="green")
-        self.__tree_style.configure("mystyle.Treeview.Heading", font=(self.__font_name, 13, 'bold'), foreground="green")  # Modify the font of the headings
+                fieldbackground="black", foreground="#1DB954")
+        self.__tree_style.configure("mystyle.Treeview.Heading", font=(self.__font_name, 13, 'bold'), foreground="#1DB954")  # Modify the font of the headings
         #creates the scrollbars
         scrollX = ttk.Scrollbar(self.__main_window, orient=HORIZONTAL)
         scrollY = ttk.Scrollbar(self.__main_window, orient=VERTICAL)
@@ -2283,7 +2290,7 @@ class GUI:
             data = self.__global_broadcast_entry.get()
             self.__global_broadcast_entry.delete(0, 'end')
             print(f"broad casting data: {data}")
-            self.__message_sender.send_global(free_text=data)
+            self.__telegram_controller.broadcast_to_users(data, sending_group = "global")
 
         elif sending_group == "line":
             line = self.__line_number_broadcast_entry.get()
